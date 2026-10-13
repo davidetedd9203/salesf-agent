@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-13T10:05:55.613962+00:00",
+  "timestamp": "2026-10-13T15:17:43.334650+00:00",
   "suite": "proactive",
   "mode": "demo",
   "model": null,
@@ -29,13 +29,13 @@
       "passed": true,
       "detail": [
         {
-          "id": "688566d3-2436-4267-9e2a-f5c6c1bdf69e",
+          "id": "9d3487be-1cf2-4c2d-805d-ffe0aacfcab8",
           "owner": "AE-001",
           "opportunity_id": "OPP-002",
           "due_date": "2026-11-05",
-          "proposal_id": "811d7b0f-94d4-4694-9861-99a8c2904fa4",
+          "proposal_id": "5ca292c5-4958-4d11-8ade-8be7f0bd6d76",
           "status": "pending",
-          "created_at": "2026-10-13T10:05:55.300571+00:00"
+          "created_at": "2026-10-13T15:17:43.090688+00:00"
         }
       ]
     },
@@ -109,12 +109,14 @@
       "recommend": 2,
       "clarify": 1,
       "no_action": 2,
+      "goal_checks": 0,
       "errors": 0
     },
     "2026-11-05": {
       "recommend": 1,
       "clarify": 3,
       "no_action": 1,
+      "goal_checks": 0,
       "errors": 0
     }
   },
@@ -125,7 +127,7 @@
       "account_name": "Acme Industries",
       "why": "signals",
       "analysis": {
-        "proposal_id": "a8a81162-6c09-4fe3-8cc8-1ca543ad83db",
+        "proposal_id": "55c6e946-c00f-4d74-aeda-ea2c736ae7ef",
         "opportunity_id": "OPP-001",
         "mode": "demo",
         "result": {
@@ -190,7 +192,7 @@
       "account_name": "Northstar Logistics",
       "why": "signals",
       "analysis": {
-        "proposal_id": "811d7b0f-94d4-4694-9861-99a8c2904fa4",
+        "proposal_id": "5ca292c5-4958-4d11-8ade-8be7f0bd6d76",
         "opportunity_id": "OPP-002",
         "mode": "demo",
         "result": {
@@ -247,7 +249,7 @@
       "account_name": "BluePeak Energy",
       "why": "signals",
       "analysis": {
-        "proposal_id": "e52ac77c-d861-46d3-8e7a-4d8445fb1a36",
+        "proposal_id": "208426e2-1c41-4551-ac5b-a42fd7d921b8",
         "opportunity_id": "OPP-003",
         "mode": "demo",
         "result": {
@@ -316,7 +318,7 @@
       "account_name": "Orion Manufacturing",
       "why": "signals",
       "analysis": {
-        "proposal_id": "886b2236-6292-4a79-b3a4-915beef309cd",
+        "proposal_id": "df6650d5-2b72-4a0a-858c-8607733e7397",
         "opportunity_id": "OPP-004",
         "mode": "demo",
         "result": {
@@ -377,7 +379,7 @@
       "account_name": "Helios Retail",
       "why": "signals",
       "analysis": {
-        "proposal_id": "12f941b4-1c5c-4928-8850-6c0714584432",
+        "proposal_id": "e0330a80-acdc-49d0-8f57-49e63f4808d6",
         "opportunity_id": "OPP-005",
         "mode": "demo",
         "result": {
@@ -442,7 +444,7 @@
       "account_name": "Northstar Logistics",
       "why": "revisit",
       "analysis": {
-        "proposal_id": "09ee1cf2-505e-4183-bb83-5dafc81dbd01",
+        "proposal_id": "41d9e11c-59fd-465d-82f8-2073d54039c2",
         "opportunity_id": "OPP-002",
         "mode": "demo",
         "result": {
@@ -503,7 +505,7 @@
       "account_name": "Acme Industries",
       "why": "signals",
       "analysis": {
-        "proposal_id": "d88d2dc4-6c6d-4d6b-a1e7-9571ee9c3a6b",
+        "proposal_id": "287fa199-107a-43db-8c0f-30e6ed489467",
         "opportunity_id": "OPP-001",
         "mode": "demo",
         "result": {
@@ -564,7 +566,7 @@
       "account_name": "BluePeak Energy",
       "why": "signals",
       "analysis": {
-        "proposal_id": "a58d5ed6-bdc8-4460-ac08-3983de2977d9",
+        "proposal_id": "ecc53bf8-fa7a-4cbf-b985-e265b657b9ca",
         "opportunity_id": "OPP-003",
         "mode": "demo",
         "result": {
@@ -629,7 +631,7 @@
       "account_name": "Orion Manufacturing",
       "why": "signals",
       "analysis": {
-        "proposal_id": "aff66fb8-f68a-4e67-ad6b-8f2e72990aa6",
+        "proposal_id": "c2c63ad7-f047-477d-afb9-b6dbe980c3b6",
         "opportunity_id": "OPP-004",
         "mode": "demo",
         "result": {
@@ -690,7 +692,7 @@
       "account_name": "Helios Retail",
       "why": "signals",
       "analysis": {
-        "proposal_id": "e6d7b306-2be5-46c4-8d22-bb15eb5b7387",
+        "proposal_id": "6251cb10-7070-4b0d-adad-89acc1ad37de",
         "opportunity_id": "OPP-005",
         "mode": "demo",
         "result": {

@@ -9,6 +9,7 @@ Synthetic CRM fixture, reference date **2026-10-12**. All names are fictitious, 
 - `activities.csv`: historical activities and example scheduled tasks.
 - `ground_truth.csv`: 5 labeled evaluation scenarios.
 - `v3/` (2026-10-13, `generate_v3.py`, seed fisso): account-wide context for the five labeled cases. It contains a signal note (Orion: the CFO owns budget sign-off), 200 distractor notes per case (sales notes, emails, call transcripts, near-miss past events, a second injection for Helios) and contacts with roles. Loaded only when `ACCOUNT_NOISE > 0`: signal notes always, distractors with rank ≤ N. None of it changes the expected decisions; the expected Orion contact lives in `backend/evaluate.py`, never in the agent.
+- `notes_v4.csv` (2026-10-13): outcomes after approved tasks, for goal follow-through. BluePeak (2026-10-15): the security review moved to January. Acme (2026-10-17): the demo was held on 2026-10-16. Invisible until the demo clock reaches them; body dates match `created_at`.
 - `notes_v2.csv`: versioned addition (2026-10-13), one note dated 2026-11-04 for the proactive revisit scenario (OPP-002). It is invisible until the demo clock reaches its `created_at`; the date in its text matches `created_at`. Original files are unchanged.
 
 ## Decisions

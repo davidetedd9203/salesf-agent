@@ -117,6 +117,46 @@ async def evaluate_proactive(mode):
                                   'In demo il ricontrollo e il risveglio sono simulati sulle fixture.'}
 
 
+async def evaluate_goals(mode):
+    """Follow-through over three demo mornings. The runner approves the proposed tasks, standing in for the rep."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = Store(replace(Settings(), db_path=str(Path(directory) / 'eval.sqlite3'), mode=mode, briefing_auto=False))
+        checks, days = [], {}
+
+        def check(name, passed, detail=None):
+            checks.append({'check': name, 'passed': bool(passed), 'detail': detail})
+
+        def goal_item(briefing, oid):
+            item = next((i for i in briefing['items'] if i['opportunity_id'] == oid and i['why'] == 'goal'), None)
+            return item and (item.get('goal_check') or {}).get('goal', {}).get('last_check')
+
+        days['2026-10-12'] = await run_briefing(store)
+        for item in days['2026-10-12']['items']:
+            if 'analysis' in item and item['analysis']['result']['decision'] == 'recommend':
+                store.approve(item['analysis']['proposal_id'])
+        opened = {g['opportunity_id'] for g in store.goals()}
+        check('2026-10-12, un obiettivo per ogni Task approvata (Acme, BluePeak)', opened == {'OPP-001', 'OPP-003'}, sorted(opened))
+        store.set_clock(date(2026, 10, 14))
+        days['2026-10-14'] = await run_briefing(store)
+        late = goal_item(days['2026-10-14'], 'OPP-003')
+        check('2026-10-14, BluePeak scaduto senza esito: pending e promemoria', late and (late['outcome'], late['action']) == ('pending', 'nudge'), late)
+        check('2026-10-14, Acme non ancora controllato (scade il 16)', goal_item(days['2026-10-14'], 'OPP-001') is None)
+        store.set_clock(date(2026, 10, 17))
+        days['2026-10-17'] = await run_briefing(store)
+        done, blocked = goal_item(days['2026-10-17'], 'OPP-001'), goal_item(days['2026-10-17'], 'OPP-003')
+        check('2026-10-17, Acme raggiunto con prova successiva (NOTE-001-4)', done and done['outcome'] == 'achieved'
+              and 'NOTE-001-4' in {e['note_id'] for e in done['evidence']}, done)
+        check('2026-10-17, BluePeak bloccato con domanda al venditore (NOTE-003-4)', blocked and blocked['outcome'] == 'blocked'
+              and blocked['question'] and 'NOTE-003-4' in {e['note_id'] for e in blocked['evidence']}, blocked)
+        check('solo le due Task approvate dal venditore, nessuna creata dal sistema', len(store.records('tasks')) == 2)
+        cases = [{'briefing_date': day, **i, 'error': i.get('error')} for day, b in days.items() for i in b['items']]
+        return {'timestamp': datetime.now(timezone.utc).isoformat(), 'suite': 'goals', 'mode': mode,
+                'model': store.settings.model if mode == 'openrouter' else None, 'checks_passed': sum(c['passed'] for c in checks),
+                'n_checks': len(checks), 'checks': checks, 'goals': store.goals(), 'cases': cases,
+                'interpretation': 'Due obiettivi su note versionate (data/notes_v4.csv): verifica il protocollo di follow-through, '
+                                  'non la generalizzazione. Il runner approva le Task al posto del venditore. In demo i controlli sono simulati.'}
+
+
 # Eval-only label: who can resolve the Orion conflict (data/v3 signal note). Never enters the agent's context.
 CONTACT_LABELS = {'OPP-004': 'CON-004-B'}
 
@@ -172,10 +212,10 @@ async def evaluate_scaling(mode, sizes=(10, 50, 200), strategies=('pipeline', 's
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=['demo','openrouter'], default='demo')
-    parser.add_argument('--suite', choices=['analysis','chat','proactive','scaling'], default='analysis')
+    parser.add_argument('--suite', choices=['analysis','chat','proactive','scaling','goals'], default='analysis')
     parser.add_argument('--output', default='reports/evaluation.json')
     args = parser.parse_args()
-    report = asyncio.run({'analysis': evaluate, 'chat': evaluate_chat, 'proactive': evaluate_proactive, 'scaling': evaluate_scaling}[args.suite](args.mode))
+    report = asyncio.run({'analysis': evaluate, 'chat': evaluate_chat, 'proactive': evaluate_proactive, 'scaling': evaluate_scaling, 'goals': evaluate_goals}[args.suite](args.mode))
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2))

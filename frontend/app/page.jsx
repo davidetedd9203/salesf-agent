@@ -6,6 +6,10 @@ const money = value => new Intl.NumberFormat('it-IT', {style: 'currency', curren
 const welcome = {role: 'assistant', local: true, content: 'Ciao Alex. Chiedimi quali opportunità guardare oggi: le ordino e ti spiego il criterio. Le analisi partono solo quando le avvii tu.'};
 const suggestions = ['Quali opportunità hanno la priorità più alta?', 'Quali hanno il valore più alto?', 'Quali chiudono prima?'];
 const labels = {recommend: 'Azione proposta', clarify: 'Serve il tuo input', no_action: 'Nessuna azione necessaria'};
+// Goal follow-through: the model reports what happened, the server policy picks the action shown here.
+const goalActions = {close: ['Obiettivo raggiunto', 'recommend'], wait: ['Obiettivo in corso', 'no_action'],
+  nudge: ['In ritardo: promemoria', 'clarify'], escalate: ['Escalation: decidi tu', 'failed'], ask_rep: ['Bloccato: serve una tua decisione', 'clarify']};
+const goalStatus = {open: 'in corso', escalated: 'escalation', blocked: 'bloccato', achieved: 'raggiunto', cancelled: 'annullato'};
 
 async function api(path, body) {
   const response = await fetch(`/api/${path}`, {credentials: 'same-origin', cache: 'no-store',
@@ -38,6 +42,7 @@ export default function Home() {
   const [question, setQuestion] = useState('');
   const [briefing, setBriefing] = useState(null);
   const [revisits, setRevisits] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [clockDate, setClockDate] = useState('2026-11-05');
   const chatLog = useRef(null);
   const mergedBriefing = useRef('');
@@ -45,8 +50,8 @@ export default function Home() {
   useEffect(() => {chatLog.current?.scrollTo({top: chatLog.current.scrollHeight});}, [messages]);
 
   async function refresh() {
-    const [c, o, t, a, b, r] = await Promise.all([api('config'), api('opportunities'), api('tasks'), api('audit'), api('briefing'), api('revisits')]);
-    setConfig(c); setOpportunities(o); setTasks(t); setAudit(a); setRevisits(r);
+    const [c, o, t, a, b, r, g] = await Promise.all([api('config'), api('opportunities'), api('tasks'), api('audit'), api('briefing'), api('revisits'), api('goals')]);
+    setConfig(c); setOpportunities(o); setTasks(t); setAudit(a); setRevisits(r); setGoals(g);
     if (b.status === 'ready' && mergedBriefing.current !== b.created_at) {
       // The briefing's analyses become the current results once; later manual analyses override them.
       mergedBriefing.current = b.created_at;
@@ -123,6 +128,11 @@ export default function Home() {
     } catch (e) {setError(e.message);} finally {setBusy('');}
   }
 
+  async function post(path, message) {
+    setError('');
+    try {await api(path, {}); await refresh(); if (message) setNotice(message);} catch (e) {setError(e.message);}
+  }
+
   async function cancelRevisit(id) {
     setError('');
     try {await api(`revisits/${id}/cancel`, {}); await refresh();} catch (e) {setError(e.message);}
@@ -186,14 +196,20 @@ export default function Home() {
           {(briefing.status === 'pending' || briefing.status === 'running') && <div className="working briefing-body" role="status"><span className="spinner" aria-hidden="true"/>L’agente sta preparando il briefing di oggi…</div>}
           {briefing.status === 'ready' && <div className="briefing-body">
             <p className="briefing-summary"><strong>{briefing.counts.recommend}</strong> da approvare · <strong>{briefing.counts.clarify}</strong> da chiarire · <strong>{briefing.counts.no_action}</strong> senza azione{briefing.counts.errors > 0 && <> · <strong>{briefing.counts.errors}</strong> fallite</>}</p>
-            <ul className="briefing-list">{briefing.items.map(i => {const d = i.analysis?.result; return <li key={i.opportunity_id}>
+            <ul className="briefing-list">{briefing.items.map(i => {const d = i.analysis?.result; const g = i.goal_check?.goal; const c = g?.last_check; return <li key={i.opportunity_id}>
               <div className="briefing-row"><button className="account-button" onClick={() => selectOpportunity(i.opportunity_id)}>{i.account_name}</button>
                 {i.why === 'revisit' && <span className="tag">Ricontrollo che l’agente si era programmato</span>}
-                {i.error ? <span className="status failed">Analisi fallita</span> : <span className={`status ${d.decision}`}>{labels[d.decision]}</span>}</div>
-              <p>{i.error || d.reason}</p>
+                {g && <span className="tag">Obiettivo: {g.objective}</span>}
+                {i.error ? <span className="status failed">Controllo fallito</span> : c ? <span className={`status ${goalActions[c.action][1]}`}>{goalActions[c.action][0]}</span> : <span className={`status ${d.decision}`}>{labels[d.decision]}</span>}</div>
+              <p>{i.error || (c ? c.reason : d.reason)}</p>
+              {c?.question && <p className="muted"><strong>Da decidere:</strong> {c.question}</p>}
+              {c?.action === 'close' && <p className="muted">Se confermi, segna la Task come completata nella vista Task: l’agente non chiude record nel CRM.</p>}
               {d?.revisit_on && <p className="muted">L’agente ricontrollerà da solo il {d.revisit_on}.</p>}
             </li>;})}</ul>
           </div>}
+          {goals.some(g => ['open', 'escalated', 'blocked'].includes(g.status)) && <div className="briefing-body revisits"><h3>Obiettivi seguiti dall’agente</h3><ul>{goals.filter(g => ['open', 'escalated', 'blocked'].includes(g.status)).map(g => <li key={g.id}>
+            <span>{opportunities.find(o => o.opportunity_id === g.opportunity_id)?.account_name} · {g.objective} · {goalStatus[g.status]}{g.status === 'open' ? `, prossimo controllo ${g.next_check}` : ''}</span>
+            <button className="text-button" onClick={() => post(`goals/${g.id}/cancel`)}>Annulla</button></li>)}</ul></div>}
           {revisits.length > 0 && <div className="briefing-body revisits"><h3>Ricontrolli programmati dall’agente</h3><ul>{revisits.map(r => <li key={r.id}>
             <span>{opportunities.find(o => o.opportunity_id === r.opportunity_id)?.account_name} · {r.due_date}</span>
             <button className="text-button" onClick={() => cancelRevisit(r.id)}>Annulla</button></li>)}</ul></div>}
@@ -232,7 +248,7 @@ export default function Home() {
           <details className="raw-notes" open={!decision}><summary>Note CRM · dati di origine non fidati</summary>{context ? context.notes.map(n => <article className="note" key={n.note_id}><p>{n.body}</p><small>{n.note_id} · registrata il {n.created_at}</small></article>) : <p role="status">Caricamento note…</p>}</details>
         </>}</section></div>
       </>}
-      {view === 'Task' && <section className="records"><table><thead><tr><th>Task</th><th>Account</th><th>Scadenza</th><th>Approvazione</th></tr></thead><tbody>{tasks.map(t => <tr key={t.id}><td>{t.title}</td><td>{opportunities.find(o => o.opportunity_id === t.opportunity_id)?.account_name}</td><td>{t.due_date}</td><td><span className="status no_action">Approvata da te</span></td></tr>)}</tbody></table>{!tasks.length && <div className="empty"><h2>Ancora nessuna Task approvata</h2><p>Analizza un’opportunità, rivedi la proposta, poi conferma la Task.</p></div>}</section>}
+      {view === 'Task' && <section className="records"><table><thead><tr><th>Task</th><th>Account</th><th>Scadenza</th><th>Approvazione</th><th>Stato</th></tr></thead><tbody>{tasks.map(t => <tr key={t.id}><td>{t.title}</td><td>{opportunities.find(o => o.opportunity_id === t.opportunity_id)?.account_name}</td><td>{t.due_date}</td><td><span className="status no_action">Approvata da te</span></td><td>{t.completed_at ? `Completata il ${t.completed_at}` : <button className="text-button" onClick={() => post(`tasks/${t.id}/complete`, 'Task completata: chiuso anche l’obiettivo collegato.')}>Segna completata</button>}</td></tr>)}</tbody></table>{!tasks.length && <div className="empty"><h2>Ancora nessuna Task approvata</h2><p>Analizza un’opportunità, rivedi la proposta, poi conferma la Task.</p></div>}</section>}
       {view === 'Registro evidenze' && <section className="audit-list">{audit.map(a => <details key={a.id}><summary><strong>{a.event.replaceAll('_',' ')}</strong><span>{new Date(a.created_at).toLocaleString('it-IT')}</span></summary><pre>{JSON.stringify(a.data, null, 2)}</pre></details>)}{!audit.length && <div className="empty">Esegui un’analisi per vedere eventi di tool e validazione.</div>}</section>}
       <footer>Analisi in sola lettura. La creazione di Task richiede la tua approvazione. Nessuna email automatica né cambio di fase nel CRM.<br/>Demo indipendente con stile ispirato a Salesforce Lightning; non è un prodotto Salesforce.</footer>
     </main>

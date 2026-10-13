@@ -145,6 +145,26 @@ def create_app(settings=None):
         enabled = settings.briefing_auto and (settings.mode == 'demo' or bool(settings.api_key and settings.model))
         return {'status': 'running' if analysis_lock.locked() else 'pending' if enabled else 'disabled', 'briefing_date': day}
 
+    @app.post('/api/tasks/{tid}/complete', dependencies=[Depends(authorized)])
+    def complete_task(tid: str):
+        try:
+            store.complete_task(tid)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
+
+    @app.get('/api/goals', dependencies=[Depends(authorized)])
+    def goals():
+        return store.goals()
+
+    @app.post('/api/goals/{gid}/cancel', dependencies=[Depends(authorized)])
+    def cancel_goal(gid: str):
+        try:
+            store.cancel_goal(gid)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
+
     @app.get('/api/revisits', dependencies=[Depends(authorized)])
     def revisits():
         return store.revisits()

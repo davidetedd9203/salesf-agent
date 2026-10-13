@@ -8,6 +8,17 @@ Python 3.14.7, Windows 11. Node non installato su questa macchina.
 - `python -m backend.evaluate --suite proactive --mode demo`: 6/6 controlli (simulazione, non benchmark). `--mode demo` analisi 5/5, chat 6/6 invariati.
 - Temporal (`temporalio` 1.34.0, server locale dell'SDK): `pytest -q` → **44 passati**, di cui 5 in `tests/test_temporal.py` (misura T1 con asyncio, ripresa senza ripetizioni, retry transitorio, nessun retry su validazione, fallimento visibile a retry esauriti). Backend con `ORCHESTRATOR=temporal` contro un server locale: briefing del 12/10 generato dal workflow all'avvio; spostato l'orologio al 5/11, nuovo workflow che parte dal ricontrollo di Northstar. Senza server raggiungibile l'avvio fallisce con errore.
 - Contesto ampio (fixture v3, strategie `search` e `pipeline`): `pytest -q` → **62 passati**, di cui 18 in `tests/test_account.py` (letture limitate, ricerca deterministica, citazione di una nota esistente ma non letta rifiutata, contatto letto e dello stesso account, protocollo mock di search e pipeline, snapshot all'approvazione). `--suite scaling --mode demo`: 5/5 e contatto corretto per entrambe a 10/50/200 note. È una simulazione: il confronto reale non è stato eseguito.
+- Follow-through degli obiettivi: `pytest -q` → **70 passati**, di cui 8 in `tests/test_goals.py`. Coprono:
+  - un obiettivo per approvazione, idempotente;
+  - la policy (attesa, promemoria, escalation);
+  - la prova che deve essere successiva all'apertura;
+  - l'escalation che ferma i controlli automatici;
+  - il completamento da parte del venditore;
+  - l'ordine del briefing;
+  - il protocollo mock per fasi;
+  - gli endpoint con sessione e Origin.
+
+  `--suite goals --mode demo`: 6/6. Le suite analysis, chat e proactive restano invariate.
 - **Non eseguiti**: `npm run build` e verifica nel browser della UI del briefing (Node assente); evaluation live con OpenRouter dopo la modifica del prompt.
 
 ## 12 ottobre 2026 — seconda sessione

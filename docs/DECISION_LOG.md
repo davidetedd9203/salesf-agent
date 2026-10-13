@@ -38,6 +38,10 @@
 | Ricerca (13/10/2026) | Ricerca per parole chiave deterministica, al massimo 5 risultati, budget di 14 chiamate | Database vettoriale, embedding | Fino a 200 note brevi per caso: un indice vettoriale non è giustificato da una limitazione misurata. Da rivalutare se la ricerca per parole chiave risulta il collo di bottiglia nell'evaluation live. |
 | Citazioni (13/10/2026) | Si citano solo note restituite al modello (`search_notes`/`get_note`), non tutte quelle esistenti | Basta che la nota esista | Con la ricerca il modello potrebbe "indovinare" un ID esistente mai letto: la citazione non sarebbe un'evidenza. |
 | Contatto da interpellare (13/10/2026) | `ask_contact_id` solo con `clarify`, solo tra i contatti restituiti da `get_contacts`; nome e ruolo scritti dal server; nessuna email esposta al modello | Il modello scrive il destinatario | Indagine condizionale verificabile: il conflitto su Orion porta a cercare chi decide. Minimizzazione dei dati: il modello non ha strumenti di invio, quindi non gli servono gli indirizzi. |
+| Follow-through (13/10/2026) | Ogni Task approvata apre un obiettivo. Il modello legge l'esito (raggiunto, in corso, bloccato); una policy fissa del server decide: attesa fino alla scadenza, un promemoria dopo, poi escalation al venditore | Il modello decide anche l'azione successiva; promemoria automatici a ripetizione | Il modello interpreta, il server decide: la policy è ispezionabile e testabile e il rumore è limitato a un promemoria. "Escalation" significa una decisione nel briefing del venditore: nessun messaggio, nessun manager notificato. |
+| Prova dell'esito (13/10/2026) | "Raggiunto" e "bloccato" richiedono una citazione esatta da una nota scritta dalla data di apertura dell'obiettivo in poi | Basta una citazione esistente | La nota della richiesta originale ("demo by 16 Oct") non può provare che la demo sia avvenuta. |
+| Chi chiude la Task (13/10/2026) | Solo il venditore (`Segna completata`), che chiude anche l'obiettivo. Un obiettivo raggiunto suggerisce di farlo, non lo fa | L'agente aggiorna il CRM quando vede la prova | Nessuna nuova scrittura sul CRM fuori dall'approvazione umana. |
+| Dove vive lo stato degli obiettivi (13/10/2026) | Tabella `goals`; i controlli girano nel briefing, quindi con Temporal sono activity durevoli | Un workflow Temporal per obiettivo con timer durevoli | Con l'orologio demo un timer reale non si può mostrare; uno stato duplicato tra database e workflow si disallinea. Stessa scelta fatta per i ricontrolli. In produzione, con date reali, un workflow per obiettivo diventa ragionevole. |
 | Lingua (12/10/2026) | UI, errori, titoli Task e razionale in italiano; prompt di sistema e note restano in inglese | Tradurre le note del dataset | Le citazioni devono essere sottostringhe esatte delle note originali; le fixture non si modificano. |
 
 ## Osservato durante la costruzione
@@ -161,3 +165,21 @@ Ipotesi da verificare, senza conclusioni anticipate:
 - la pipeline potrebbe reggere anche a 200 note, perché i modelli recenti hanno contesti ampi; in quel caso l'agente costa di più senza guadagnare accuratezza e si tiene la pipeline;
 - l'agente potrebbe perdere la nota giusta se le parole chiave non coincidono;
 - il contatto giusto richiede di collegare la nota del CFO al conflitto: è il caso in cui l'indagine condizionale dovrebbe pagare.
+
+## Follow-through degli obiettivi — 13/10/2026
+
+Suite `python -m backend.evaluate --suite goals`. Il runner approva le Task proposte, al posto del venditore, poi segue tre mattine:
+- **12/10:** due obiettivi aperti, Acme e BluePeak.
+- **14/10:** BluePeak è scaduto senza esito, quindi `pending` e un promemoria; Acme non è ancora dovuto.
+- **17/10:** Acme risulta raggiunto con la prova della nota v4 del 17/10; BluePeak risulta bloccato dalla nota del 15/10 (revisione di sicurezza spostata a gennaio), con una domanda per il venditore.
+
+Esiti:
+- demo: 6/6 controlli, simulati sulle fixture;
+- modello reale: non ancora misurato.
+
+L'escalation dopo un secondo controllo senza esito è coperta solo da un test unitario: nessuna fixture la produce.
+
+Limiti noti:
+- la policy è uguale per tutti i tipi di obiettivo;
+- un obiettivo raggiunto non chiude la Task e resta al venditore farlo: è voluto, ma è un passaggio in più;
+- se nessuno legge il briefing, l'escalation non va da nessuna parte. Serve un canale e va misurato il rischio di fatica da notifiche.

@@ -64,6 +64,13 @@ Il valore di esempio in `.env.example` è configurabile: verifica disponibilità
 7. Apri **Task** e **Registro evidenze** per mostrare persistenza, tool e approvazione.
 8. **Proattività.** All'avvio il server prepara da solo il **Briefing del mattino** del 12/10, senza clic: cinque analisi, e su Northstar l'agente si programma un ricontrollo al 5/11. Imposta l'orologio demo al **2026-11-05** e premi **Sposta orologio demo**: il briefing della nuova data parte da solo, comincia dal ricontrollo, trova la nota del 4/11 e propone la demo entro il 12/11. Acme e BluePeak diventano chiarimenti perché le scadenze sono passate.
 
+**Obiettivi (follow-through).** Ogni Task approvata apre un obiettivo, per esempio "la demo tecnica si è svolta". Dalla scadenza in poi il briefing lo controlla.
+- Il modello legge le note nuove e dice se è raggiunto, in corso o bloccato. Per "raggiunto" serve una prova scritta dopo l'apertura dell'obiettivo.
+- Il server decide il passo successivo: attesa, un promemoria, poi escalation verso il venditore.
+- Solo il venditore chiude le Task (`Segna completata`).
+
+Per provarlo: approva Acme e BluePeak, poi sposta l'orologio al 14/10 (promemoria su BluePeak) e al 17/10 (Acme raggiunto, BluePeak bloccato). Le note di esito sono in `data/notes_v4.csv`.
+
 **Pipeline o agente? (sperimentale).** `AGENT_STRATEGY` sceglie tra `fixed` (default, tre letture per fasi), `search` (il modello cerca e sceglie cosa leggere tra note, email, trascrizioni e contatti) e `pipeline` (una chiamata con tutto il contesto). `ACCOUNT_NOISE=10|50|200` aggiunge le note di rumore della fixture v3 ai cinque casi etichettati: usa un database nuovo quando lo cambi. Le citazioni sono valide solo se la nota è stata restituita al modello. Su Orion il chiarimento indica chi può decidere (`ask_contact`), scelto tra i contatti letti. Confronto: `python -m backend.evaluate --suite scaling --mode openrouter --output reports/live-scaling.json`.
 
 **Orchestrazione durevole (opzionale).** Di default il briefing gira in un ciclo asyncio nel processo. Con `ORCHESTRATOR=temporal` diventa un workflow Temporal: le analisi già completate non si ripetono dopo un crash, si ritentano solo gli errori transitori del provider, e un ID di workflow per data impedisce doppie esecuzioni. Serve un server Temporal: `temporal server start-dev` (Temporal CLI) su `localhost:7233`. Il worker gira nel backend; `python -m backend.workflows` lo avvia separato. Se il server non risponde, il backend non parte: nessun ripiego silenzioso. Motivazione e misura in `docs/DECISION_LOG.md`, T1.
@@ -98,6 +105,7 @@ pytest -q
 python -m backend.evaluate --mode demo --output reports/evaluation-demo.json
 python -m backend.evaluate --suite chat --mode demo --output reports/evaluation-chat-demo.json
 python -m backend.evaluate --suite proactive --mode demo --output reports/evaluation-proactive-demo.json
+python -m backend.evaluate --suite goals --mode demo --output reports/evaluation-goals-demo.json
 python -m backend.evaluate --suite scaling --mode demo --output reports/evaluation-scaling-demo.json   # protocollo; il confronto vale solo con --mode openrouter
 python -m backend.evaluate --mode openrouter --output reports/live-evaluation.json   # oppure OPENROUTER_MODEL=<id> davanti al comando
 cd frontend

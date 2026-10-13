@@ -51,6 +51,23 @@ class AccountDecision(Decision):
         return self
 
 
+
+class GoalCheck(StrictModel):
+    """What happened to an approved task's goal. The model reads; the server decides the next action."""
+    outcome: Literal['achieved', 'pending', 'blocked']
+    reason: str = Field(min_length=10, max_length=600)
+    evidence: list[Evidence] = Field(max_length=3)
+    question: str | None = Field(max_length=300, description='Only for blocked: the decision the rep has to make. Otherwise null.')
+
+    @model_validator(mode='after')
+    def coherent(self):
+        if self.outcome != 'pending' and not self.evidence:
+            raise ValueError('achieved and blocked need evidence')
+        if (self.outcome == 'blocked') != bool(self.question):
+            raise ValueError('Only blocked outcomes must contain a question')
+        return self
+
+
 class ListQuery(StrictModel):
     sort: Literal['priority', 'amount', 'close_date']
     stage: Literal['Discovery', 'Qualification', 'Proposal', 'Negotiation'] | None = None

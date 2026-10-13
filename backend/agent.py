@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from .config import Settings
 from .schemas import Decision
-from .store import Store
+from .store import Store, has_open_task
 
 TASK_TITLES = {
     'schedule_demo': 'Organizzare la demo tecnica richiesta',
@@ -116,7 +116,7 @@ def validate_decision(raw, context, settings):
             raise AgentError('La scadenza della Task deve cadere entro 30 giorni dalla data di riferimento')
         if str(decision.task.due_date) not in quoted:
             raise AgentError('La scadenza della Task non compare esplicitamente nelle evidenze citate')
-        if context['tasks'] or any(a['type'] == 'Task' and not a['completed_at'] for a in context['activities']):
+        if has_open_task(context):
             raise AgentError('Esiste una Task aperta; la raccomandazione richiede revisione manuale')
         result['task']['title'] = TASK_TITLES[decision.task.kind]
     return result
@@ -154,7 +154,7 @@ def scripted_demo(context, today=None):
         result.update(decision='clarify', priority='normal', task=None,
                       reason=f"La scadenza richiesta ({result['task']['due_date']}) è passata senza una Task registrata.",
                       question='La richiesta del cliente è ancora valida, e con quale nuova data?')
-    if context['tasks'] or any(a['type'] == 'Task' and not a['completed_at'] for a in context['activities']):
+    if has_open_task(context):
         result.update(decision='no_action', priority='low', reason="Esiste già una prossima Task. Verificala prima di crearne un'altra.", task=None, question=None, revisit_on=None)
     return result
 
