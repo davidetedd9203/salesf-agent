@@ -1,0 +1,21 @@
+contact_id,account_id,name,role,email
+CON-001,ACC-001,Contact 1,CFO,contact1@example.invalid
+CON-002,ACC-002,Contact 2,Procurement,contact2@example.invalid
+CON-003,ACC-003,Contact 3,Head of Operations,contact3@example.invalid
+CON-004,ACC-004,Contact 4,CTO,contact4@example.invalid
+CON-005,ACC-005,Contact 5,CFO,contact5@example.invalid
+CON-006,ACC-006,Contact 6,Procurement,contact6@example.invalid
+CON-007,ACC-007,Contact 7,Head of Operations,contact7@example.invalid
+CON-008,ACC-008,Contact 8,CTO,contact8@example.invalid
+CON-009,ACC-009,Contact 9,CFO,contact9@example.invalid
+CON-010,ACC-010,Contact 10,Procurement,contact10@example.invalid
+CON-011,ACC-011,Contact 11,Head of Operations,contact11@example.invalid
+CON-012,ACC-012,Contact 12,CTO,contact12@example.invalid
+CON-013,ACC-013,Contact 13,CFO,contact13@example.invalid
+CON-014,ACC-014,Contact 14,Procurement,contact14@example.invalid
+CON-015,ACC-015,Contact 15,Head of Operations,contact15@example.invalid
+CON-016,ACC-016,Contact 16,CTO,contact16@example.invalid
+CON-017,ACC-017,Contact 17,CFO,contact17@example.invalid
+CON-018,ACC-018,Contact 18,Procurement,contact18@example.invalid
+CON-019,ACC-019,Contact 19,Head of Operations,contact19@example.invalid
+CON-020,ACC-020,Contact 20,CTO,contact20@example.invalid

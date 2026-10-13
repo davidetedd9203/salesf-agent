@@ -1,0 +1,21 @@
+opportunity_id,account_id,account_name,owner_id,name,stage,amount_eur,close_date,last_activity_date,next_task_due,status
+OPP-001,ACC-001,Acme Industries,AE-001,Acme Industries - Enterprise Subscription,Discovery,38500,2026-10-30,2026-09-24,,Open
+OPP-002,ACC-002,Northstar Logistics,AE-001,Northstar Logistics - Enterprise Subscription,Proposal,52000,2026-11-02,2026-10-09,,Open
+OPP-003,ACC-003,BluePeak Energy,AE-001,BluePeak Energy - Enterprise Subscription,Negotiation,65500,2026-11-05,2026-09-28,,Open
+OPP-004,ACC-004,Orion Manufacturing,AE-001,Orion Manufacturing - Enterprise Subscription,Qualification,79000,2026-11-08,2026-09-30,,Open
+OPP-005,ACC-005,Helios Retail,AE-001,Helios Retail - Enterprise Subscription,Discovery,92500,2026-11-11,2026-10-10,,Open
+OPP-006,ACC-006,Vega Telecom,AE-001,Vega Telecom - Enterprise Subscription,Proposal,106000,2026-11-14,2026-10-06,,Open
+OPP-007,ACC-007,Atlas Healthcare,AE-001,Atlas Healthcare - Enterprise Subscription,Negotiation,119500,2026-11-17,2026-10-03,,Open
+OPP-008,ACC-008,Nimbus Software,AE-001,Nimbus Software - Enterprise Subscription,Qualification,133000,2026-11-20,2026-09-16,,Open
+OPP-009,ACC-009,Redwood Finance,AE-001,Redwood Finance - Enterprise Subscription,Discovery,146500,2026-11-23,2026-09-24,,Open
+OPP-010,ACC-010,Aster Mobility,AE-001,Aster Mobility - Enterprise Subscription,Proposal,160000,2026-11-26,2026-10-09,,Open
+OPP-011,ACC-011,Cobalt Systems,AE-001,Cobalt Systems - Enterprise Subscription,Negotiation,173500,2026-11-29,2026-09-28,,Open
+OPP-012,ACC-012,Delta Foods,AE-001,Delta Foods - Enterprise Subscription,Qualification,27000,2026-12-02,2026-09-30,,Open
+OPP-013,ACC-013,Polaris Media,AE-001,Polaris Media - Enterprise Subscription,Discovery,40500,2026-12-05,2026-10-10,,Open
+OPP-014,ACC-014,Terra Construction,AE-001,Terra Construction - Enterprise Subscription,Proposal,54000,2026-12-08,2026-10-06,,Open
+OPP-015,ACC-015,Vertex Labs,AE-001,Vertex Labs - Enterprise Subscription,Negotiation,67500,2026-12-11,2026-10-03,,Open
+OPP-016,ACC-016,Silverline Travel,AE-001,Silverline Travel - Enterprise Subscription,Qualification,81000,2026-12-14,2026-09-16,,Open
+OPP-017,ACC-017,Aquila Aerospace,AE-001,Aquila Aerospace - Enterprise Subscription,Discovery,94500,2026-12-17,2026-09-24,,Open
+OPP-018,ACC-018,Metro Utilities,AE-001,Metro Utilities - Enterprise Subscription,Proposal,108000,2026-12-20,2026-10-09,,Open
+OPP-019,ACC-019,Evergreen Pharma,AE-001,Evergreen Pharma - Enterprise Subscription,Negotiation,121500,2026-12-23,2026-09-28,,Open
+OPP-020,ACC-020,Summit Education,AE-001,Summit Education - Enterprise Subscription,Qualification,135000,2026-12-26,2026-09-30,,Open

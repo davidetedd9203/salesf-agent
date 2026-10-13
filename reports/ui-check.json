@@ -1,0 +1,11 @@
+{
+  "login": true,
+  "batch_analysis": true,
+  "approval": true,
+  "tasks_view": true,
+  "clarification": true,
+  "abstention": true,
+  "mobile_document_overflow": false,
+  "page_errors": [],
+  "mobile_selection_navigates_to_evidence": true
+}

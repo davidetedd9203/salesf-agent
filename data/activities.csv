@@ -1,0 +1,26 @@
+activity_id,opportunity_id,type,completed_at,summary
+ACT-001,OPP-001,Call,2026-09-24,Commercial discussion logged
+ACT-002,OPP-002,Call,2026-10-09,Commercial discussion logged
+ACT-003,OPP-003,Call,2026-09-28,Commercial discussion logged
+ACT-004,OPP-004,Call,2026-09-30,Commercial discussion logged
+ACT-005,OPP-005,Call,2026-10-10,Commercial discussion logged
+ACT-006,OPP-006,Call,2026-10-06,Commercial discussion logged
+ACT-006-B,OPP-006,Task,,Follow up scheduled for next week
+ACT-007,OPP-007,Call,2026-10-03,Commercial discussion logged
+ACT-008,OPP-008,Call,2026-09-16,Commercial discussion logged
+ACT-009,OPP-009,Call,2026-09-24,Commercial discussion logged
+ACT-009-B,OPP-009,Task,,Follow up scheduled for next week
+ACT-010,OPP-010,Call,2026-10-09,Commercial discussion logged
+ACT-011,OPP-011,Call,2026-09-28,Commercial discussion logged
+ACT-012,OPP-012,Call,2026-09-30,Commercial discussion logged
+ACT-012-B,OPP-012,Task,,Follow up scheduled for next week
+ACT-013,OPP-013,Call,2026-10-10,Commercial discussion logged
+ACT-014,OPP-014,Call,2026-10-06,Commercial discussion logged
+ACT-015,OPP-015,Call,2026-10-03,Commercial discussion logged
+ACT-015-B,OPP-015,Task,,Follow up scheduled for next week
+ACT-016,OPP-016,Call,2026-09-16,Commercial discussion logged
+ACT-017,OPP-017,Call,2026-09-24,Commercial discussion logged
+ACT-018,OPP-018,Call,2026-10-09,Commercial discussion logged
+ACT-018-B,OPP-018,Task,,Follow up scheduled for next week
+ACT-019,OPP-019,Call,2026-09-28,Commercial discussion logged
+ACT-020,OPP-020,Call,2026-09-30,Commercial discussion logged
