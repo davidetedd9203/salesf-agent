@@ -32,6 +32,7 @@
 | Orologio demo (13/10/2026) | Data fissa di default; il presentatore la sposta esplicitamente (entro 120 giorni). Le note sono visibili solo dalla loro `created_at` | Orologio reale | Riproducibilità mantenuta; il tempo che passa diventa un input dichiarato e registrato in audit. |
 | Nota versionata (13/10/2026) | `data/notes_v2.csv`: NOTE-002-4 del 4/11, data nel testo coerente con `created_at` | Modificare `notes.csv` | Le fixture originali restano intatte; al 12/10 il contesto, e quindi lo snapshot, è identico a prima. |
 | Validità delle proposte del briefing (13/10/2026) | 12 ore invece di 30 minuti; all'approvazione si rifiuta una Task con scadenza già passata rispetto all'orologio | Stessa TTL di 30 minuti | Un briefing preparato all'alba sarebbe scaduto prima che il venditore lo apra. Lo snapshot resta la vera protezione. |
+| Orchestrazione del briefing (13/10/2026) | Temporal **opzionale** (`ORCHESTRATOR=temporal`): ogni analisi è un'activity, ID di workflow per owner e data, retry solo per errori transitori del provider. Default asyncio | Temporal obbligatorio; LangGraph; Celery/RQ | Introdotto dopo il fallimento misurato T1. Temporal risolve proprio quel limite (progresso durevole, idempotenza tra worker, retry selettivi). LangGraph serve a orchestrare il ragionamento, che qui resta tre letture e una decisione. Una coda semplice non conserva il progresso del batch. Opzionale perché la demo non deve dipendere da un servizio in più. |
 | Lingua (12/10/2026) | UI, errori, titoli Task e razionale in italiano; prompt di sistema e note restano in inglese | Tradurre le note del dataset | Le citazioni devono essere sottostringhe esatte delle note originali; le fixture non si modificano. |
 
 ## Osservato durante la costruzione
@@ -106,7 +107,7 @@ Principio: ogni componente si aggiunge quando una limitazione misurata lo giusti
 | 1. Affidabilità del modello | Tasso di output malformati > 0 su un set più ampio (oggi 0/10 con GLM dopo F8–F10) | Structured outputs nativi (`response_format` JSON Schema strict) oppure SDK del provider (Anthropic tool use con `strict`) al posto della validazione a valle | Elimina la classe F5 alla fonte; Pydantic resta come secondo controllo. |
 | 2. Evaluation | Più di ~20 casi o più modelli da confrontare | `pytest` parametrizzato sui casi + un harness come promptfoo o Inspect AI; tracciamento con Langfuse/OpenTelemetry | Riproducibilità, confronto tra modelli, revisione umana delle citazioni. |
 | 3. Pipeline fissa vs agente | L'agente non batte un'estrazione a passo fisso a parità di dataset | Tenere la pipeline fissa (una chiamata con tutto il contesto) | Le tre letture sono sempre obbligatorie: oggi l'autonomia è minima. |
-| 4. Workflow durevole | Analisi in batch lunghe, ripresa dopo crash, approvazioni asincrone | LangGraph (checkpoint, interrupt human-in-the-loop) o una coda (Celery/RQ, Temporal) | Solo con stato persistente reale da gestire; oggi basta il loop Python. |
+| 4. Workflow durevole | Analisi in batch lunghe, ripresa dopo crash, approvazioni asincrone | **Fatto per il briefing (T1)**: Temporal opzionale. Prossimo passo: Temporal Schedule alle 07:00 per utente al posto del ciclo nel processo; ricontrolli come timer durevoli | Il crash a metà briefing è stato riprodotto e misurato; le singole analisi manuali restano nel loop Python. |
 | 5. Salesforce | Utilità validata con un venditore | Sandbox via REST API con OAuth 2.0 (JWT bearer), permessi mappati all'utente, Task via API con controllo di concorrenza su `LastModifiedDate` (header condizionale `If-Unmodified-Since`); valutare Agentforce + Einstein Trust Layer se il cliente è già su quella piattaforma | Identità e permessi reali sostituiscono `AE-001` e lo snapshot locale. |
 | 6. Scala | Più utenti concorrenti | Postgres, sessioni e rate limit in Redis, worker multipli | Le sessioni in memoria sono il limite noto attuale. |
 
@@ -121,3 +122,22 @@ Demo: 6/6 controlli, **simulazione scriptata, non un benchmark**. Il modello rea
 Osservato in demo al 5/11: Acme e BluePeak diventano `clarify` perché le scadenze del 16/10 e del 13/10 sono passate senza Task. È il comportamento voluto, ma mostra un limite: senza un flusso di completamento delle Task, il briefing non sa se il venditore ha agito fuori dal sistema.
 
 Rischi nuovi, non ancora misurati: fatica da notifiche (metrica proposta: quota di voci del briefing su cui il venditore agisce); costo di esecuzioni non richieste (limitato a 5 analisi per data, `BRIEFING_AUTO=false` per spegnerlo); un ricontrollo proposto dal modello su un'attesa inesistente (mitigato dalla data citata alla lettera, non escluso).
+
+## Orchestrazione durevole — 13/10/2026
+
+| # | Cosa è successo | Risposta del sistema | Azione |
+|---|---|---|---|
+| T1 | Riprodotto in test (`tests/test_temporal.py`): un errore non gestito durante la terza analisi del briefing con il ciclo asyncio. Al riavvio il briefing riparte da zero: **Acme analizzata due volte**, quindi pagata due volte in modalità live. Effetto non previsto: il ricontrollo di Northstar, salvato prima del crash, la esclude dal briefing rifatto, che **perde Northstar in silenzio**. | Nessun briefing salvato dopo il crash, nessuna Task creata. Il secondo effetto però non è visibile all'utente. | Temporal opzionale: ogni analisi è un'activity. Stesso scenario: 5 analisi esattamente una volta, solo il passo fallito ritentato, Northstar presente. |
+
+Cosa imponiamo con Temporal, verificato con un server Temporal locale nei test:
+- un secondo avvio per la stessa data riusa lo stesso workflow (`briefing-AE-001-<data>`);
+- un errore transitorio del provider (rete, 429, 5xx, timeout) viene ritentato fino a 3 volte;
+- un errore di validazione (citazione inventata, schema) diventa un risultato mostrato all'utente e non viene mai ritentato. Un retry pagherebbe di nuovo il modello senza cambiare le regole: per quel caso c'è già la correzione singola nel loop;
+- a retry esauriti il workflow fallisce in modo visibile, senza salvare un briefing parziale come se fosse completo;
+- se il server Temporal non è raggiungibile l'avvio si ferma con errore: nessun ripiego silenzioso su asyncio.
+
+Limiti ancora aperti:
+- Con Temporal il lock in memoria non copre le analisi del worker: un'analisi manuale e una del briefing possono chiamare il modello in parallelo.
+- Il trigger resta il ciclo nel processo, perché l'orologio demo è finto. In produzione andrebbe un Temporal Schedule.
+- I ricontrolli restano nel database e non sono timer durevoli. È una scelta: una sola fonte di verità, annullabile dalla UI e leggibile in SQL.
+- Il crash simulato è un'eccezione nell'activity, non un processo ucciso. Il caso di un worker ucciso si affida al timeout dell'activity, documentato da Temporal ma non provato qui.

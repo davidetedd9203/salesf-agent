@@ -1,6 +1,7 @@
 """Morning briefing: the server, not the user, starts a bounded batch of read-only analyses once per demo date.
 Selection is deterministic (revisits the agent scheduled for itself first, then rule candidates);
-the summary is composed by the server, with no extra model call. Nothing is written to the CRM."""
+the summary is composed by the server, with no extra model call. Nothing is written to the CRM.
+The steps below are shared by the asyncio loop (default) and the optional Temporal workflow (backend/workflows.py)."""
 from .agent import AgentError, analyze
 from .store import Store
 
@@ -21,23 +22,33 @@ def select(store: Store):
     return picked[:MAX_ANALYSES]
 
 
-async def run_briefing(store: Store, trigger='scheduler'):
-    day = store.settings.reference_date
-    if existing := store.briefing(day):
-        return existing  # Idempotent per date: never re-run (or re-bill) the same morning.
-    names = {o['opportunity_id']: o['account_name'] for o in store.opportunities()}
-    items = []
-    for oid, why in select(store):
-        item = {'opportunity_id': oid, 'account_name': names[oid], 'why': why}
-        try:
-            item['analysis'] = await analyze(store, oid, ttl=TTL)
-        except (AgentError, LookupError) as error:
-            item['error'] = str(error)
-        items.append(item)
+async def analyze_item(store: Store, oid, why, transient=()):
+    """One briefing entry. A rejected or failed analysis is a result shown to the user, not an exception;
+    only `transient` errors propagate, so a durable orchestrator can retry them."""
+    item = {'opportunity_id': oid, 'account_name': store.opportunity(oid)['account_name'], 'why': why}
+    try:
+        item['analysis'] = await analyze(store, oid, ttl=TTL)
+    except transient:
+        raise
+    except (AgentError, LookupError) as error:
+        item['error'] = str(error)
+    return item
+
+
+def summarize(store: Store, day, trigger, items, orchestrator='asyncio'):
     decided = [i['analysis']['result'] for i in items if 'analysis' in i]
     counts = {'recommend': sum(d['decision'] == 'recommend' for d in decided),
               'clarify': sum(d['decision'] == 'clarify' for d in decided),
               'no_action': sum(d['decision'] == 'no_action' for d in decided),
               'errors': sum('error' in i for i in items)}
     return store.save_briefing(day, {'briefing_date': day, 'trigger': trigger, 'mode': store.settings.mode,
-                                     'items': items, 'counts': counts})
+                                     'orchestrator': orchestrator, 'items': items, 'counts': counts})
+
+
+async def run_briefing(store: Store, trigger='scheduler'):
+    day = store.settings.reference_date
+    if existing := store.briefing(day):
+        return existing  # Idempotent per date: never re-run (or re-bill) the same morning.
+    # Known limit, measured in tests/test_temporal.py: a crash here loses the progress of completed analyses.
+    items = [await analyze_item(store, oid, why) for oid, why in select(store)]
+    return summarize(store, day, trigger, items)

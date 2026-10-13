@@ -21,11 +21,21 @@ def create_app(settings=None):
     analysis_lock = asyncio.Lock()
     last_analysis = [0.0]
     background = set()
+    temporal = {}
+    if settings.orchestrator not in ('asyncio', 'temporal'):
+        raise ValueError('ORCHESTRATOR deve essere asyncio oppure temporal')
 
     async def ensure_briefing(trigger):
         """Proactive trigger: runs without a user request, once per demo date, under the shared model lock."""
         live_ready = store.settings.mode == 'demo' or bool(settings.api_key and settings.model)
-        if not settings.briefing_auto or not live_ready or analysis_lock.locked() or store.briefing(store.settings.reference_date):
+        if not settings.briefing_auto or not live_ready or store.briefing(store.settings.reference_date):
+            return
+        if settings.orchestrator == 'temporal':
+            # The workflow ID per owner and date replaces the in-process lock as the guard against double runs.
+            from .workflows import start_briefing
+            await start_briefing(temporal['client'], settings, store.settings.reference_date, trigger)
+            return
+        if analysis_lock.locked():
             return
         async with analysis_lock:
             try:
@@ -46,6 +56,12 @@ def create_app(settings=None):
 
     @asynccontextmanager
     async def lifespan(app):
+        if settings.orchestrator == 'temporal':
+            from temporalio.client import Client
+            from .workflows import briefing_worker
+            # No silent fallback to asyncio: an unreachable Temporal server stops startup with a visible error.
+            temporal['client'] = await Client.connect(settings.temporal_address)
+            spawn(briefing_worker(temporal['client'], settings).run())  # In-process for the demo; `python -m backend.workflows` runs it separately.
         if settings.briefing_auto:
             spawn(morning_loop())
         yield
@@ -107,7 +123,7 @@ def create_app(settings=None):
     @app.get('/api/config', dependencies=[Depends(authorized)])
     def configuration():
         return {'mode': settings.mode, 'model': settings.model or None, 'reference_date': store.settings.reference_date,
-                'base_date': store.base_date.isoformat(), 'briefing_auto': settings.briefing_auto,
+                'base_date': store.base_date.isoformat(), 'briefing_auto': settings.briefing_auto, 'orchestrator': settings.orchestrator,
                 'owner_id': settings.owner_id, 'ready': settings.mode == 'demo' or bool(settings.api_key and settings.model)}
 
     @app.post('/api/clock', dependencies=[Depends(authorized)])

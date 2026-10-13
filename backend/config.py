@@ -21,4 +21,8 @@ class Settings:
     cookie_secure: bool = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
     # The server starts the morning briefing by itself, once per demo date (see backend/briefing.py).
     briefing_auto: bool = os.getenv('BRIEFING_AUTO', 'true').lower() == 'true'
+    # asyncio (default, no extra service) or temporal (durable workflow, see backend/workflows.py).
+    orchestrator: str = os.getenv('ORCHESTRATOR', 'asyncio')
+    temporal_address: str = os.getenv('TEMPORAL_ADDRESS', 'localhost:7233')
+    temporal_task_queue: str = os.getenv('TEMPORAL_TASK_QUEUE', 'sales-copilot-briefing')
 

@@ -48,6 +48,10 @@ class AgentError(Exception):
     pass
 
 
+class ProviderError(AgentError):
+    """Transient: network, HTTP or timeout. A durable orchestrator may retry it; validation failures are never retried."""
+
+
 def inline_refs(node, defs):
     """Expand $ref: observed models stringified the anyOf-$ref `task` field."""
     if isinstance(node, dict):
@@ -172,7 +176,8 @@ async def complete(client, settings, messages, offered, trace, started, step):
         failed = getattr(error, 'response', None)
         status = getattr(failed, 'status_code', None)
         detail = failed.text[:200] if failed is not None else ''
-        raise AgentError(f'Richiesta OpenRouter fallita{f" (HTTP {status})" if status else ""}. Verifica credenziali, crediti, supporto tool del modello e connessione. {detail}'.strip()) from error
+        transient = status is None or status == 429 or status >= 500  # A 401 or 404 will not fix itself on retry.
+        raise (ProviderError if transient else AgentError)(f'Richiesta OpenRouter fallita{f" (HTTP {status})" if status else ""}. Verifica credenziali, crediti, supporto tool del modello e connessione. {detail}'.strip()) from error
     calls = message.get('tool_calls')
     received = len(calls) if isinstance(calls, list) else 0
     if received:
@@ -257,5 +262,5 @@ async def analyze(store: Store, oid: str, transport=None, ttl=1800):
         if isinstance(error, (AgentError, LookupError)):
             raise
         if isinstance(error, asyncio.TimeoutError):
-            raise AgentError('Analisi scaduta per timeout. Nessuna proposta o Task creata.') from error
+            raise ProviderError('Analisi scaduta per timeout. Nessuna proposta o Task creata.') from error
         raise AgentError('Output del modello o evidenze non validi. Nessuna proposta o Task creata.') from error

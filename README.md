@@ -64,6 +64,8 @@ Il valore di esempio in `.env.example` è configurabile: verifica disponibilità
 7. Apri **Task** e **Registro evidenze** per mostrare persistenza, tool e approvazione.
 8. **Proattività.** All'avvio il server prepara da solo il **Briefing del mattino** del 12/10, senza clic: cinque analisi, e su Northstar l'agente si programma un ricontrollo al 5/11. Imposta l'orologio demo al **2026-11-05** e premi **Sposta orologio demo**: il briefing della nuova data parte da solo, comincia dal ricontrollo, trova la nota del 4/11 e propone la demo entro il 12/11. Acme e BluePeak diventano chiarimenti perché le scadenze sono passate.
 
+**Orchestrazione durevole (opzionale).** Di default il briefing gira in un ciclo asyncio nel processo. Con `ORCHESTRATOR=temporal` diventa un workflow Temporal: le analisi già completate non si ripetono dopo un crash, si ritentano solo gli errori transitori del provider, e un ID di workflow per data impedisce doppie esecuzioni. Serve un server Temporal: `temporal server start-dev` (Temporal CLI) su `localhost:7233`. Il worker gira nel backend; `python -m backend.workflows` lo avvia separato. Se il server non risponde, il backend non parte: nessun ripiego silenzioso. Motivazione e misura in `docs/DECISION_LOG.md`, T1.
+
 Il briefing non crea Task: le proposte si approvano come sempre. I ricontrolli sono memoria dell'agente, non record CRM, e si annullano dalla UI. `BRIEFING_AUTO=false` disattiva l'avvio automatico; in modalità `openrouter` ogni briefing costa fino a cinque analisi.
 
 I suggerimenti richiedono un'azione supportata e una deadline esplicita. I due tipi ammessi sono `schedule_demo` e `prepare_security_response`. L'LLM non può generare una Task arbitraria o scegliere destinatari; il titolo è costruito dal server. Un'azione fuori perimetro produce astensione o chiarimento. Non è un assistente commerciale generalista.
@@ -99,7 +101,7 @@ cd frontend
 npm run build
 ```
 
-I test mockano OpenRouter per verificare il protocollo, budget, autorizzazioni e gestione degli errori; non verificano il comportamento semantico di Claude. Le cinque etichette vengono lette solo dal runner esterno `evaluate.py`, mai dal codice di indagine. Il report salva decisioni, citazioni, tool, uso token riportato dal provider ed errori. Le verifiche non creano Task e usano database temporanei.
+`tests/test_temporal.py` avvia un server Temporal locale tramite l'SDK (scaricato al primo uso). I test mockano OpenRouter per verificare il protocollo, budget, autorizzazioni e gestione degli errori; non verificano il comportamento semantico di Claude. Le cinque etichette vengono lette solo dal runner esterno `evaluate.py`, mai dal codice di indagine. Il report salva decisioni, citazioni, tool, uso token riportato dal provider ed errori. Le verifiche non creano Task e usano database temporanei.
 
 Il comparatore baseline propone un follow-up per ogni candidato: è deliberatamente semplice, non un prodotto competitivo. Le metriche sono decision exact match, copertura degli ID di evidenza attesi, selezione dei casi etichettati e conteggio Task senza approvazione. La copertura degli ID non misura supporto semantico: serve revisione umana. Nessuna valutazione degli altri 15 record è possibile senza etichettarli.
 
@@ -122,7 +124,7 @@ Ferma i processi. Per avvio locale elimina **solo** `var/crm.sqlite3`; al riavvi
 ## File principali
 
 - `frontend/`: UI Next.js, package lock e proxy API.
-- `backend/`: API, tool loop, briefing proattivo, persistenza, schema ed evaluation.
+- `backend/`: API, tool loop, briefing proattivo (`briefing.py`, workflow Temporal opzionale in `workflows.py`), persistenza, schema ed evaluation.
 - `data/`: dataset originale, ground truth separata e generatore originale.
 - `tests/`: controlli di protocollo e guardrail.
 - `docs/PANEL_WALKTHROUGH.md`: sceneggiatura e domande del panel.
