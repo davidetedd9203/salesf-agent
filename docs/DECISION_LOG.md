@@ -25,6 +25,13 @@
 | "Priorità" (12/10/2026) | Ordinamento deterministico lato server: azioni analizzate ad alta priorità, poi chiarimenti, poi record non analizzati per numero di segnali, poi `no_action`; a parità, chiusura più vicina | Lasciare che il modello decida cosa significa "priorità" | Non esiste un campo priorità: senza una definizione fissa il criterio cambierebbe a ogni domanda. |
 | Rifiuti nella chat (12/10/2026) | Una richiesta fuori perimetro non restituisce ID | Rifiutare l'azione ma mostrare il record citato | Deciso dopo l'osservazione C3, prima della rimisura: risposta più prevedibile e testabile. Da validare con un venditore: mostrare la card potrebbe essere utile. |
 | Streaming (12/10/2026) | Nessuno nella v1: risposta JSON unica | SSE | Le risposte arrivano in pochi secondi; lo streaming si aggiunge se la latenza percepita diventa un problema misurato. |
+| Proattività (13/10/2026) | Briefing del mattino avviato dal server una volta per data, più ricontrolli che l'agente si programma da solo | Agente che agisce da solo; nessuna proattività | Proattività (chi avvia il lavoro) e autonomia (chi approva) sono assi separati: si aumenta la prima, la seconda resta umana. Nessuna nuova scrittura sul CRM. |
+| Selezione del briefing (13/10/2026) | Deterministica: prima i ricontrolli scaduti, poi le candidate per chiusura più vicina, massimo 5; esclusi i record con un ricontrollo futuro | LLM che sceglie quali trattative analizzare | Costo prevedibile e criterio ispezionabile; le regole hanno recall 5/5 sui casi etichettati. L'agentività sta nel ricontrollo deciso dal modello, non nel triage. |
+| Riepilogo del briefing (13/10/2026) | Composto dal server dalle decisioni validate | Una chiamata LLM in più che riassume | Ogni frase del briefing viene da una decisione già validata con citazioni; un riassunto libero reintrodurrebbe testo non verificato. |
+| Ricontrollo (`revisit_on`) (13/10/2026) | Campo opzionale di `submit_decision`, solo con `no_action`, data citata alla lettera nelle evidenze, tra domani e 90 giorni | Promemoria scritto come Task nel CRM; data calcolata dal server | È memoria dell'agente, non un record CRM: visibile e annullabile, non crea Task. Stessa validazione delle scadenze, quindi niente date inventate. |
+| Orologio demo (13/10/2026) | Data fissa di default; il presentatore la sposta esplicitamente (entro 120 giorni). Le note sono visibili solo dalla loro `created_at` | Orologio reale | Riproducibilità mantenuta; il tempo che passa diventa un input dichiarato e registrato in audit. |
+| Nota versionata (13/10/2026) | `data/notes_v2.csv`: NOTE-002-4 del 4/11, data nel testo coerente con `created_at` | Modificare `notes.csv` | Le fixture originali restano intatte; al 12/10 il contesto, e quindi lo snapshot, è identico a prima. |
+| Validità delle proposte del briefing (13/10/2026) | 12 ore invece di 30 minuti; all'approvazione si rifiuta una Task con scadenza già passata rispetto all'orologio | Stessa TTL di 30 minuti | Un briefing preparato all'alba sarebbe scaduto prima che il venditore lo apra. Lo snapshot resta la vera protezione. |
 | Lingua (12/10/2026) | UI, errori, titoli Task e razionale in italiano; prompt di sistema e note restano in inglese | Tradurre le note del dataset | Le citazioni devono essere sottostringhe esatte delle note originali; le fixture non si modificano. |
 
 ## Osservato durante la costruzione
@@ -104,3 +111,13 @@ Principio: ogni componente si aggiunge quando una limitazione misurata lo giusti
 | 6. Scala | Più utenti concorrenti | Postgres, sessioni e rate limit in Redis, worker multipli | Le sessioni in memoria sono il limite noto attuale. |
 
 Non consigliati senza misura: multi-agente, database vettoriale (tre note per opportunità stanno nel contesto), invio automatico di email.
+
+## Proattività — 13/10/2026
+
+Briefing del mattino e ricontrolli programmati dall'agente. Suite `python -m backend.evaluate --suite proactive`: due mattine (12/10 e 5/11). Al 12/10 Northstar deve risultare `no_action` con ricontrollo al 5/11; spostato l'orologio, il briefing del 5/11 deve partire da quel ricontrollo, trovare la nota nuova e proporre la demo entro il 12/11, senza Task con scadenze passate e senza Task create.
+
+Demo: 6/6 controlli, **simulazione scriptata, non un benchmark**. Il modello reale non è ancora stato misurato su questa suite né sulle analisi dopo le nuove regole del prompt (`revisit_on`, scadenze passate): va rieseguita l'evaluation live prima di dichiarare che il 5/5 regge.
+
+Osservato in demo al 5/11: Acme e BluePeak diventano `clarify` perché le scadenze del 16/10 e del 13/10 sono passate senza Task. È il comportamento voluto, ma mostra un limite: senza un flusso di completamento delle Task, il briefing non sa se il venditore ha agito fuori dal sistema.
+
+Rischi nuovi, non ancora misurati: fatica da notifiche (metrica proposta: quota di voci del briefing su cui il venditore agisce); costo di esecuzioni non richieste (limitato a 5 analisi per data, `BRIEFING_AUTO=false` per spegnerlo); un ricontrollo proposto dal modello su un'attesa inesistente (mitigato dalla data citata alla lettera, non escluso).

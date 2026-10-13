@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-12T21:38:12.973374+00:00",
+  "timestamp": "2026-10-13T08:23:39.815460+00:00",
   "mode": "demo",
   "model": null,
   "reference_date": "2026-10-12",
@@ -20,7 +20,7 @@
       "decision_match": true,
       "required_evidence_coverage": 1.0,
       "result": {
-        "proposal_id": "1092fec1-4047-4bb1-9d9a-d7934142d6c3",
+        "proposal_id": "f94e9fec-e041-46ff-bbc6-1f0216f83d98",
         "opportunity_id": "OPP-001",
         "mode": "demo",
         "result": {
@@ -42,7 +42,8 @@
             "due_date": "2026-10-16",
             "title": "Organizzare la demo tecnica richiesta"
           },
-          "question": null
+          "question": null,
+          "revisit_on": null
         },
         "trace": [
           {
@@ -89,13 +90,13 @@
       "decision_match": true,
       "required_evidence_coverage": 1.0,
       "result": {
-        "proposal_id": "95b29c33-3699-4607-9e11-ab49759e030c",
+        "proposal_id": "9863e700-1271-46d1-bc4d-cb4ee6264ea5",
         "opportunity_id": "OPP-002",
         "mode": "demo",
         "result": {
           "decision": "no_action",
           "priority": "low",
-          "reason": "Il cliente ha chiesto esplicitamente un periodo senza contatti. Rispetta la data concordata.",
+          "reason": "Il cliente ha chiesto esplicitamente un periodo senza contatti. Rispetto la data concordata e ricontrollo allora.",
           "evidence": [
             {
               "note_id": "NOTE-002-1",
@@ -103,7 +104,8 @@
             }
           ],
           "task": null,
-          "question": null
+          "question": null,
+          "revisit_on": "2026-11-05"
         },
         "trace": [
           {
@@ -150,7 +152,7 @@
       "decision_match": true,
       "required_evidence_coverage": 1.0,
       "result": {
-        "proposal_id": "c5cc027c-49c1-4793-8b95-4a0c01b107ad",
+        "proposal_id": "123f48ab-2fb5-49b5-89a8-525fcf26fe0a",
         "opportunity_id": "OPP-003",
         "mode": "demo",
         "result": {
@@ -176,7 +178,8 @@
             "due_date": "2026-10-13",
             "title": "Coordinare la risposta al questionario di sicurezza richiesto"
           },
-          "question": null
+          "question": null,
+          "revisit_on": null
         },
         "trace": [
           {
@@ -223,7 +226,7 @@
       "decision_match": true,
       "required_evidence_coverage": 1.0,
       "result": {
-        "proposal_id": "4b8c325a-ba45-4d03-b336-74c02a9af395",
+        "proposal_id": "c5bb8621-3c5f-4b33-a6f0-1ffe90c7de3c",
         "opportunity_id": "OPP-004",
         "mode": "demo",
         "result": {
@@ -241,7 +244,8 @@
             }
           ],
           "task": null,
-          "question": "La demo \u00e8 ancora desiderata e chi pu\u00f2 confermare la decisione?"
+          "question": "La demo \u00e8 ancora desiderata e chi pu\u00f2 confermare la decisione?",
+          "revisit_on": null
         },
         "trace": [
           {
@@ -288,7 +292,7 @@
       "decision_match": true,
       "required_evidence_coverage": 1.0,
       "result": {
-        "proposal_id": "e6b4e222-6d20-4781-8803-46856a332525",
+        "proposal_id": "0061e07c-000e-4b2a-9155-260e2ba3924c",
         "opportunity_id": "OPP-005",
         "mode": "demo",
         "result": {
@@ -310,7 +314,8 @@
             }
           ],
           "task": null,
-          "question": null
+          "question": null,
+          "revisit_on": null
         },
         "trace": [
           {

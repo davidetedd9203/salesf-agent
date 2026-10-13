@@ -25,6 +25,8 @@ class Decision(StrictModel):
     evidence: list[Evidence] = Field(min_length=1, max_length=5)
     task: TaskDraft | None
     question: str | None = Field(max_length=300)
+    revisit_on: date | None = Field(default=None, description='Only for no_action caused by an agreed waiting period: '
+                                    'the explicit end date quoted in evidence, when you will re-investigate. Otherwise null.')
 
     @model_validator(mode='after')
     def coherent(self):
@@ -32,7 +34,10 @@ class Decision(StrictModel):
             raise ValueError('Only recommendations may have a task, and must have one')
         if (self.decision == 'clarify') != bool(self.question):
             raise ValueError('Only clarify decisions must contain a question')
+        if self.revisit_on and self.decision != 'no_action':
+            raise ValueError('Only no_action decisions may schedule a revisit')
         return self
+
 
 
 class ListQuery(StrictModel):
@@ -64,6 +69,10 @@ class ChatRequest(StrictModel):
 
 class AnalysisRequest(StrictModel):
     opportunity_ids: list[str] = Field(min_length=1, max_length=5)
+
+
+class ClockRequest(StrictModel):
+    reference_date: date
 
 
 class ApprovalRequest(StrictModel):

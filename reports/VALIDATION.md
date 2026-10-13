@@ -1,5 +1,13 @@
 # Verifiche eseguite
 
+## 13 ottobre 2026 — proattività
+
+Python 3.14.7, Windows 11. Node non installato su questa macchina.
+
+- `pytest -q`: **39 passati** (31 precedenti + nota versionata e orologio, validazione di `revisit_on`, briefing idempotente e risveglio sul ricontrollo, approvazione rifiutata con scadenza passata, endpoint orologio/briefing/ricontrolli con sessione e Origin).
+- `python -m backend.evaluate --suite proactive --mode demo`: 6/6 controlli (simulazione, non benchmark). `--mode demo` analisi 5/5, chat 6/6 invariati.
+- **Non eseguiti**: `npm run build` e verifica nel browser della UI del briefing (Node assente); evaluation live con OpenRouter dopo la modifica del prompt.
+
 ## 12 ottobre 2026 — seconda sessione
 
 Python 3.14.7, Node 24.19.0, Next.js 16.4.0, Windows 11.

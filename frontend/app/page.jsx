@@ -36,14 +36,30 @@ export default function Home() {
   const [resolved, setResolved] = useState({});
   const [messages, setMessages] = useState([welcome]);
   const [question, setQuestion] = useState('');
+  const [briefing, setBriefing] = useState(null);
+  const [revisits, setRevisits] = useState([]);
+  const [clockDate, setClockDate] = useState('2026-11-05');
   const chatLog = useRef(null);
+  const mergedBriefing = useRef('');
 
   useEffect(() => {chatLog.current?.scrollTo({top: chatLog.current.scrollHeight});}, [messages]);
 
   async function refresh() {
-    const [c, o, t, a] = await Promise.all([api('config'), api('opportunities'), api('tasks'), api('audit')]);
-    setConfig(c); setOpportunities(o); setTasks(t); setAudit(a);
+    const [c, o, t, a, b, r] = await Promise.all([api('config'), api('opportunities'), api('tasks'), api('audit'), api('briefing'), api('revisits')]);
+    setConfig(c); setOpportunities(o); setTasks(t); setAudit(a); setRevisits(r);
+    if (b.status === 'ready' && mergedBriefing.current !== b.created_at) {
+      // The briefing's analyses become the current results once; later manual analyses override them.
+      mergedBriefing.current = b.created_at;
+      setResults(old => ({...old, ...Object.fromEntries(b.items.filter(i => i.analysis).map(i => [i.opportunity_id, i.analysis]))}));
+    }
+    setBriefing(b);
   }
+
+  useEffect(() => {
+    if (!signedIn || !briefing || briefing.status === 'ready' || briefing.status === 'disabled') return;
+    const timer = setInterval(() => {refresh().catch(e => setError(e.message));}, 2000);
+    return () => clearInterval(timer);
+  }, [signedIn, briefing?.status]);
 
   useEffect(() => {
     refresh().then(() => setSignedIn(true)).catch(() => {}).finally(() => setChecking(false));
@@ -97,6 +113,21 @@ export default function Home() {
     } finally {setBusy('');}
   }
 
+  async function moveClock(event) {
+    event.preventDefault(); setError(''); setNotice(''); setReview(null); setBusy('Spostamento dell’orologio demo');
+    try {
+      await api('clock', {reference_date: clockDate});
+      setResults({}); setResolved({}); mergedBriefing.current = '';
+      await refresh();
+      setNotice(`Orologio demo al ${clockDate}. Il briefing parte da solo: nessuna analisi è stata avviata da te.`);
+    } catch (e) {setError(e.message);} finally {setBusy('');}
+  }
+
+  async function cancelRevisit(id) {
+    setError('');
+    try {await api(`revisits/${id}/cancel`, {}); await refresh();} catch (e) {setError(e.message);}
+  }
+
   async function reject(result) {
     setBusy('Archiviazione della proposta'); setError('');
     try {await api(`proposals/${result.proposal_id}/reject`, {}); setResolved(old => ({...old, [result.proposal_id]: 'rejected'})); setReview(null); await refresh();}
@@ -136,7 +167,10 @@ export default function Home() {
     </header>
     <nav className="context-bar" aria-label="Workspace"><span className="app-name">Sales Copilot</span>{['Oggi', 'Opportunità', 'Task', 'Registro evidenze'].map(item => <button key={item} className={view === item ? 'nav active' : 'nav'} aria-current={view === item ? 'page' : undefined} onClick={() => {setView(item); setError(''); setReview(null);}}>{item}{item === 'Task' && tasks.length > 0 && <span>{tasks.length}</span>}</button>)}</nav>
     <main className="workspace">
-      <header className="page-header"><span className="page-icon" aria-hidden="true">{view === 'Task' ? '✓' : view === 'Registro evidenze' ? '≡' : '★'}</span><div><p className="eyebrow">Workspace personale</p><h1>{view === 'Oggi' ? 'La tua prossima mossa' : view}</h1><p>{view === 'Oggi' ? 'Leggi il segnale. Verifica le evidenze. Scegli l’azione.' : view === 'Task' ? 'Ogni Task qui è stata approvata esplicitamente.' : view === 'Registro evidenze' ? 'Tool call, validazione e approvazioni. Nessun ragionamento nascosto.' : 'Tutte le opportunità assegnate a te.'}</p></div><span className="reference">Data di riferimento demo<br/><strong>{config.reference_date}</strong></span></header>
+      <header className="page-header"><span className="page-icon" aria-hidden="true">{view === 'Task' ? '✓' : view === 'Registro evidenze' ? '≡' : '★'}</span><div><p className="eyebrow">Workspace personale</p><h1>{view === 'Oggi' ? 'La tua prossima mossa' : view}</h1><p>{view === 'Oggi' ? 'Leggi il segnale. Verifica le evidenze. Scegli l’azione.' : view === 'Task' ? 'Ogni Task qui è stata approvata esplicitamente.' : view === 'Registro evidenze' ? 'Tool call, validazione e approvazioni. Nessun ragionamento nascosto.' : 'Tutte le opportunità assegnate a te.'}</p></div><div className="reference">Data di riferimento demo<br/><strong>{config.reference_date}</strong>
+        <form className="clock" onSubmit={moveClock}><label htmlFor="clock" className="visually-hidden">Nuova data dell’orologio demo</label>
+          <input id="clock" type="date" min={config.base_date} value={clockDate} onChange={e => setClockDate(e.target.value)} required/>
+          <button className="secondary" disabled={!!busy || briefing?.status === 'running'}>Sposta orologio demo</button></form></div></header>
       <div className="disclosure">CRM sintetico · {opportunities.length} opportunità · {shortlist.length} candidate selezionate da regole. Le regole segnalano record da rivedere; non stabiliscono un rischio.</div>
       {!config.ready && <p className="error" role="alert">Configurazione OpenRouter incompleta. Imposta chiave API e modello in .env, poi riavvia il backend.</p>}
       {error && <p className="error" role="alert">{error}</p>}
@@ -144,6 +178,26 @@ export default function Home() {
       {busy && <div className="working" role="status"><span className="spinner" aria-hidden="true"/>{busy}… {config.mode === 'openrouter' && 'Ogni analisi è limitata a 90 secondi.'}</div>}
 
       {(view === 'Oggi' || view === 'Opportunità') && <>
+        {view === 'Oggi' && briefing && <section className="briefing" aria-label="Briefing del mattino">
+          <div className="chat-heading"><h2>Briefing del mattino · {briefing.briefing_date}</h2><span>{briefing.status === 'ready'
+            ? `Preparato dall’agente alle ${new Date(briefing.created_at).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}, senza una tua richiesta · ${briefing.mode === 'demo' ? 'simulazione scriptata' : 'modello reale'} · nessuna Task creata`
+            : 'Avviato dal server una volta per data'}</span></div>
+          {briefing.status === 'disabled' && <p className="briefing-body muted">Briefing automatico disattivato (BRIEFING_AUTO=false).</p>}
+          {(briefing.status === 'pending' || briefing.status === 'running') && <div className="working briefing-body" role="status"><span className="spinner" aria-hidden="true"/>L’agente sta preparando il briefing di oggi…</div>}
+          {briefing.status === 'ready' && <div className="briefing-body">
+            <p className="briefing-summary"><strong>{briefing.counts.recommend}</strong> da approvare · <strong>{briefing.counts.clarify}</strong> da chiarire · <strong>{briefing.counts.no_action}</strong> senza azione{briefing.counts.errors > 0 && <> · <strong>{briefing.counts.errors}</strong> fallite</>}</p>
+            <ul className="briefing-list">{briefing.items.map(i => {const d = i.analysis?.result; return <li key={i.opportunity_id}>
+              <div className="briefing-row"><button className="account-button" onClick={() => selectOpportunity(i.opportunity_id)}>{i.account_name}</button>
+                {i.why === 'revisit' && <span className="tag">Ricontrollo che l’agente si era programmato</span>}
+                {i.error ? <span className="status failed">Analisi fallita</span> : <span className={`status ${d.decision}`}>{labels[d.decision]}</span>}</div>
+              <p>{i.error || d.reason}</p>
+              {d?.revisit_on && <p className="muted">L’agente ricontrollerà da solo il {d.revisit_on}.</p>}
+            </li>;})}</ul>
+          </div>}
+          {revisits.length > 0 && <div className="briefing-body revisits"><h3>Ricontrolli programmati dall’agente</h3><ul>{revisits.map(r => <li key={r.id}>
+            <span>{opportunities.find(o => o.opportunity_id === r.opportunity_id)?.account_name} · {r.due_date}</span>
+            <button className="text-button" onClick={() => cancelRevisit(r.id)}>Annulla</button></li>)}</ul></div>}
+        </section>}
         {view === 'Oggi' && <section className="chat" aria-label="Assistente">
           <div className="chat-heading"><h2>Assistente</h2><span>{config.mode === 'demo' ? 'Simulazione a parole chiave · nessun LLM' : 'Sola lettura · propone, non agisce'}</span></div>
           <div className="chat-log" aria-live="polite" ref={chatLog}>{messages.map((m, i) => <div key={i} className={`bubble ${m.role}${m.error ? ' failed' : ''}`}>
@@ -169,6 +223,7 @@ export default function Home() {
           <button className="secondary full" disabled={!!busy || !config.ready || !context} onClick={() => investigate([selected])}>{analysis ? 'Analizza di nuovo' : 'Analizza questa opportunità'}</button>
           {analysis?.error && <div className="error" role="alert">{analysis.error}<p>Nessuna Task creata. Correggi la configurazione o riprova.</p></div>}
           {decision && <div className="finding"><div className="finding-title"><h3>{labels[decision.decision]}</h3><span className={`priority ${decision.priority}`}>priorità {{high: 'alta', normal: 'normale', low: 'bassa'}[decision.priority]}</span></div><p>{decision.reason}</p>
+            {decision.revisit_on && <p className="question"><strong>Ricontrollo programmato</strong><br/>L’agente rianalizzerà questa opportunità il {decision.revisit_on}, senza che tu debba chiederlo.</p>}
             {decision.question && <p className="question"><strong>Chiarisci con lo stakeholder</strong><br/>{decision.question}</p>}
             {decision.task && <div className="task-preview"><h4>{decision.task.title}</h4><p>Scadenza {decision.task.due_date} · assegnata a te</p>{state ? <p className="resolution">{state === 'approved' ? 'Task creata' : 'Proposta archiviata'}</p> : review === analysis.proposal_id ? <div className="approval"><p>Stai approvando esattamente questa Task nel CRM simulato.</p><button className="primary full" disabled={!!busy} onClick={() => approve(analysis)}>Conferma e crea la Task</button><button className="text-button" disabled={!!busy} onClick={() => setReview(null)}>Torna alla revisione</button></div> : <div className="button-row"><button className="primary" disabled={!!busy} onClick={() => setReview(analysis.proposal_id)}>Rivedi la Task</button><button className="text-button" disabled={!!busy} onClick={() => reject(analysis)}>Archivia</button></div>}</div>}
             <h4 className="evidence-label">Evidenze a supporto</h4>{decision.evidence.map(e => <blockquote key={e.note_id}><p>{e.quote}</p><cite>{e.note_id}</cite></blockquote>)}

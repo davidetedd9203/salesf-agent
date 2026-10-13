@@ -19,4 +19,6 @@ class Settings:
     password: str = os.getenv('DEMO_PASSWORD', 'local-demo')
     origin: str = os.getenv('APP_ORIGIN', 'http://localhost:3000')
     cookie_secure: bool = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
+    # The server starts the morning briefing by itself, once per demo date (see backend/briefing.py).
+    briefing_auto: bool = os.getenv('BRIEFING_AUTO', 'true').lower() == 'true'
 

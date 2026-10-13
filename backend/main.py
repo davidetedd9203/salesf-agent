@@ -6,9 +6,10 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 
 from .agent import AgentError, analyze
+from .briefing import run_briefing
 from .chat import chat
 from .config import Settings
-from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, LoginRequest
+from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, ClockRequest, LoginRequest
 from .store import Store
 
 
@@ -19,10 +20,37 @@ def create_app(settings=None):
     login_attempts = {}
     analysis_lock = asyncio.Lock()
     last_analysis = [0.0]
+    background = set()
+
+    async def ensure_briefing(trigger):
+        """Proactive trigger: runs without a user request, once per demo date, under the shared model lock."""
+        live_ready = store.settings.mode == 'demo' or bool(settings.api_key and settings.model)
+        if not settings.briefing_auto or not live_ready or analysis_lock.locked() or store.briefing(store.settings.reference_date):
+            return
+        async with analysis_lock:
+            try:
+                await run_briefing(store, trigger)
+            except Exception as error:  # Visible in the audit; the next tick retries.
+                store.audit('briefing_failed', {'briefing_date': store.settings.reference_date, 'error': str(error)[:300]})
+
+    async def morning_loop():
+        # Production: a cron at 07:00 per user. Here the demo date only changes when the presenter moves the clock.
+        while True:
+            await ensure_briefing('scheduler')
+            await asyncio.sleep(60)
+
+    def spawn(coroutine):
+        task = asyncio.create_task(coroutine)
+        background.add(task)
+        task.add_done_callback(background.discard)
 
     @asynccontextmanager
     async def lifespan(app):
+        if settings.briefing_auto:
+            spawn(morning_loop())
         yield
+        for task in list(background):
+            task.cancel()
 
     app = FastAPI(title='Sales Copilot — demo locale per colloquio', lifespan=lifespan)
     app.state.store = store
@@ -78,8 +106,40 @@ def create_app(settings=None):
 
     @app.get('/api/config', dependencies=[Depends(authorized)])
     def configuration():
-        return {'mode': settings.mode, 'model': settings.model or None, 'reference_date': settings.reference_date,
+        return {'mode': settings.mode, 'model': settings.model or None, 'reference_date': store.settings.reference_date,
+                'base_date': store.base_date.isoformat(), 'briefing_auto': settings.briefing_auto,
                 'owner_id': settings.owner_id, 'ready': settings.mode == 'demo' or bool(settings.api_key and settings.model)}
+
+    @app.post('/api/clock', dependencies=[Depends(authorized)])
+    async def clock(body: ClockRequest):
+        if analysis_lock.locked():
+            raise HTTPException(429, "Un'analisi è in corso: attendi prima di spostare l'orologio")
+        try:
+            store.set_clock(body.reference_date)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+        spawn(ensure_briefing('clock'))  # The user moved time; the briefing starts on its own.
+        return configuration()
+
+    @app.get('/api/briefing', dependencies=[Depends(authorized)])
+    def briefing():
+        day = store.settings.reference_date
+        if found := store.briefing(day):
+            return {'status': 'ready', **found}
+        enabled = settings.briefing_auto and (settings.mode == 'demo' or bool(settings.api_key and settings.model))
+        return {'status': 'running' if analysis_lock.locked() else 'pending' if enabled else 'disabled', 'briefing_date': day}
+
+    @app.get('/api/revisits', dependencies=[Depends(authorized)])
+    def revisits():
+        return store.revisits()
+
+    @app.post('/api/revisits/{rid}/cancel', dependencies=[Depends(authorized)])
+    def cancel_revisit(rid: str):
+        try:
+            store.cancel_revisit(rid)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
 
     @app.get('/api/opportunities', dependencies=[Depends(authorized)])
     def opportunities():

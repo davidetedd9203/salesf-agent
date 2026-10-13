@@ -5,10 +5,11 @@ import csv
 import json
 import tempfile
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .agent import analyze
+from .briefing import run_briefing
 from .chat import chat, list_opportunities
 from .schemas import ListQuery
 from .config import ROOT, Settings
@@ -78,18 +79,56 @@ async def evaluate_chat(mode):
                 'interpretation': "Il router deve tradurre la domanda nella query tipizzata corretta (o rifiutare). Il confronto con un ordinamento deterministico misura l'interpretazione, non la qualità della spiegazione."}
 
 
+async def evaluate_proactive(mode):
+    """Two demo mornings: the agent must schedule its own revisit, then wake up on it and act on newer evidence."""
+    with tempfile.TemporaryDirectory() as directory:
+        store = Store(replace(Settings(), db_path=str(Path(directory) / 'eval.sqlite3'), mode=mode))
+        checks = []
+
+        def check(name, passed, detail=None):
+            checks.append({'check': name, 'passed': bool(passed), 'detail': detail})
+
+        def result(briefing, oid):
+            item = next((i for i in briefing['items'] if i['opportunity_id'] == oid), None)
+            return item, (item or {}).get('analysis', {}).get('result')
+
+        day1 = await run_briefing(store)
+        _, wait = result(day1, 'OPP-002')
+        check('2026-10-12, Northstar: no_action', wait and wait['decision'] == 'no_action', wait)
+        check('2026-10-12, ricontrollo programmato dal modello per il 2026-11-05',
+              [r['due_date'] for r in store.revisits() if r['opportunity_id'] == 'OPP-002'] == ['2026-11-05'], store.revisits())
+        store.set_clock(date(2026, 11, 5))
+        day2 = await run_briefing(store)
+        woken, act = result(day2, 'OPP-002')
+        check('2026-11-05, il briefing parte dal ricontrollo', day2['items'] and day2['items'][0] is woken and woken['why'] == 'revisit',
+              [(i['opportunity_id'], i['why']) for i in day2['items']])
+        check('2026-11-05, Northstar: demo da organizzare entro il 2026-11-12', act and act['decision'] == 'recommend'
+              and (act['task'] or {}).get('due_date') == '2026-11-12', act)
+        proposed = [i['analysis']['result']['task'] for i in day2['items'] if 'analysis' in i and i['analysis']['result']['task']]
+        check('2026-11-05, nessuna Task proposta con scadenza passata', all(t['due_date'] >= '2026-11-05' for t in proposed), proposed)
+        check('nessuna Task creata senza approvazione', not store.records('tasks'))
+        cases = [{'briefing_date': b['briefing_date'], **i} for b in (day1, day2) for i in b['items']]
+        for case in cases:
+            case.setdefault('error', None)
+        return {'timestamp': datetime.now(timezone.utc).isoformat(), 'suite': 'proactive', 'mode': mode,
+                'model': store.settings.model if mode == 'openrouter' else None, 'checks_passed': sum(c['passed'] for c in checks),
+                'n_checks': len(checks), 'checks': checks, 'counts': {b['briefing_date']: b['counts'] for b in (day1, day2)}, 'cases': cases,
+                'interpretation': 'Un solo scenario di risveglio (Northstar) su una nota versionata: verifica il protocollo proattivo, non la generalizzazione. '
+                                  'In demo il ricontrollo e il risveglio sono simulati sulle fixture.'}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=['demo','openrouter'], default='demo')
-    parser.add_argument('--suite', choices=['analysis','chat'], default='analysis')
+    parser.add_argument('--suite', choices=['analysis','chat','proactive'], default='analysis')
     parser.add_argument('--output', default='reports/evaluation.json')
     args = parser.parse_args()
-    report = asyncio.run((evaluate if args.suite == 'analysis' else evaluate_chat)(args.mode))
+    report = asyncio.run({'analysis': evaluate, 'chat': evaluate_chat, 'proactive': evaluate_proactive}[args.suite](args.mode))
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2))
     print(json.dumps({k:v for k,v in report.items() if k != 'cases'}, indent=2))
-    if any(c['error'] for c in report['cases']):
+    if any(c['error'] for c in report['cases']) or not all(c['passed'] for c in report.get('checks', [])):
         raise SystemExit(1)
 
 

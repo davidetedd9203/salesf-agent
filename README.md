@@ -62,6 +62,9 @@ Il valore di esempio in `.env.example` è configurabile: verifica disponibilità
 5. **Orion Manufacturing**: stakeholder in conflitto → domanda di chiarimento, nessun pulsante di creazione.
 6. **Helios Retail**: istruzioni malevole in una nota → ignorarle; richiesta commerciale senza data precisa, nessuna Task.
 7. Apri **Task** e **Registro evidenze** per mostrare persistenza, tool e approvazione.
+8. **Proattività.** All'avvio il server prepara da solo il **Briefing del mattino** del 12/10, senza clic: cinque analisi, e su Northstar l'agente si programma un ricontrollo al 5/11. Imposta l'orologio demo al **2026-11-05** e premi **Sposta orologio demo**: il briefing della nuova data parte da solo, comincia dal ricontrollo, trova la nota del 4/11 e propone la demo entro il 12/11. Acme e BluePeak diventano chiarimenti perché le scadenze sono passate.
+
+Il briefing non crea Task: le proposte si approvano come sempre. I ricontrolli sono memoria dell'agente, non record CRM, e si annullano dalla UI. `BRIEFING_AUTO=false` disattiva l'avvio automatico; in modalità `openrouter` ogni briefing costa fino a cinque analisi.
 
 I suggerimenti richiedono un'azione supportata e una deadline esplicita. I due tipi ammessi sono `schedule_demo` e `prepare_security_response`. L'LLM non può generare una Task arbitraria o scegliere destinatari; il titolo è costruito dal server. Un'azione fuori perimetro produce astensione o chiarimento. Non è un assistente commerciale generalista.
 
@@ -90,6 +93,7 @@ Regole candidate: inattività ≥14 giorni, nessuna Task pendente, oppure close 
 pytest -q
 python -m backend.evaluate --mode demo --output reports/evaluation-demo.json
 python -m backend.evaluate --suite chat --mode demo --output reports/evaluation-chat-demo.json
+python -m backend.evaluate --suite proactive --mode demo --output reports/evaluation-proactive-demo.json
 python -m backend.evaluate --mode openrouter --output reports/live-evaluation.json   # oppure OPENROUTER_MODEL=<id> davanti al comando
 cd frontend
 npm run build
@@ -118,7 +122,7 @@ Ferma i processi. Per avvio locale elimina **solo** `var/crm.sqlite3`; al riavvi
 ## File principali
 
 - `frontend/`: UI Next.js, package lock e proxy API.
-- `backend/`: API, tool loop, persistenza, schema ed evaluation.
+- `backend/`: API, tool loop, briefing proattivo, persistenza, schema ed evaluation.
 - `data/`: dataset originale, ground truth separata e generatore originale.
 - `tests/`: controlli di protocollo e guardrail.
 - `docs/PANEL_WALKTHROUGH.md`: sceneggiatura e domande del panel.

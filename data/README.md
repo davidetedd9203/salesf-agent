@@ -8,6 +8,7 @@ Synthetic CRM fixture, reference date **2026-10-12**. All names are fictitious, 
 - `notes.csv`: 60 untrusted CRM notes.
 - `activities.csv`: historical activities and example scheduled tasks.
 - `ground_truth.csv`: 5 labeled evaluation scenarios.
+- `notes_v2.csv`: versioned addition (2026-10-13), one note dated 2026-11-04 for the proactive revisit scenario (OPP-002). It is invisible until the demo clock reaches its `created_at`; the date in its text matches `created_at`. Original files are unchanged.
 
 ## Decisions
 - `recommend`: propose a concrete task; creation requires explicit approval.
