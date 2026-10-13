@@ -39,6 +39,17 @@ class Decision(StrictModel):
         return self
 
 
+class AccountDecision(Decision):
+    """search and pipeline strategies: a clarification can name who resolves it, chosen among contacts actually read."""
+    ask_contact_id: str | None = Field(default=None, max_length=80, description='Only for clarify: contact_id from get_contacts '
+                                       'of the person who can resolve the conflict, based on evidence. Otherwise null.')
+
+    @model_validator(mode='after')
+    def contact_only_for_clarify(self):
+        if self.ask_contact_id and self.decision != 'clarify':
+            raise ValueError('Only clarify decisions may name a contact')
+        return self
+
 
 class ListQuery(StrictModel):
     sort: Literal['priority', 'amount', 'close_date']

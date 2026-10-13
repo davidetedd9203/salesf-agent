@@ -31,6 +31,18 @@ Usa il modello reale solo dopo aver configurato e testato quel modello esatto. S
 
 Da dire apertamente: in demo è simulato; con il modello reale va ancora misurato. I rischi nuovi sono fatica da notifiche, costo di esecuzioni non richieste e un ricontrollo su un'attesa inesistente. Il passo successivo è un trigger sugli eventi del CRM (nuova nota, email) invece che sull'orario.
 
+## Quando serve un agente — 3 minuti
+
+“Se riesco a scrivere i passi prima di leggere i dati, è una pipeline.” Oggi l'analisi di una trattativa lo è. Ho quindi costruito le condizioni in cui non lo è più, e uno strumento per misurarlo:
+- **contesto ampio**: fino a 200 note di rumore per caso;
+- **ricerca**: il modello sceglie cosa leggere, con un budget di letture;
+- **indagine condizionale**: su Orion il conflitto porta a cercare chi decide;
+- **confronto**: suite `scaling`, pipeline a una chiamata contro agente, stesse etichette e stesso validatore.
+
+Mostra `AGENT_STRATEGY=search` con `ACCOUNT_NOISE=50`: la traccia mostra le ricerche e il chiarimento indica Contact 4B (CFO).
+
+Da dire apertamente: in demo è simulato. Se con il modello reale la pipeline pareggia, tengo la pipeline.
+
 ## Scelte e alternative scartate — 3 minuti
 
 Rimanda a `DECISION_LOG.md`. Sottolinea orchestrazione Python esplicita, CRM simulato, nessun tool email, nessun lead scoring predittivo, nessun database vettoriale, titoli delle Task scritti dal server e approvazione persistita. Derivano dal rischio e dal perimetro richiesti, non dal voler far sembrare il sistema “agentico”.
@@ -66,5 +78,6 @@ Confronto con una pipeline fissa a una sola chiamata sugli stessi casi; revision
 - Perché non avete fatto coercizione dei tipi lato server? Perché trasforma output sbagliati in proposte valide senza che il modello abbia dimostrato di capire lo schema; preferiamo che sia il modello a correggersi, una sola volta.
 - Perché il briefing non lo sceglie l'LLM? Il triage deterministico ha recall 5/5 sui casi etichettati e un costo prevedibile; l'agentività è nel ricontrollo deciso dal modello. Se le regole perdono casi rilevanti in una misura reale, il triage LLM diventa un esperimento.
 - Perché Temporal e non LangGraph? LangGraph orchestra il ragionamento dell'agente: ha checkpoint, ma per un grafo di passi LLM. Il mio problema misurato era un batch che deve sopravvivere a crash e doppie esecuzioni, con retry selettivi: è il caso d'uso di un motore di workflow durevole. Se il ragionamento diventasse multi-step con rami, LangGraph potrebbe girare dentro un'activity.
+- Chi vince tra pipeline e agente? Lo dice `--suite scaling` con un modello reale, non io. Ho preparato la misura, non il risultato.
 - Perché i validation error non si ritentano? Ritentare paga di nuovo il modello senza cambiare le regole; la correzione singola con feedback esiste già nel loop. Si ritentano solo rete, 429, 5xx e timeout.
 - Come scalerebbe? Sessioni e rate limit fuori dalla memoria, identità reale e coda, accesso al CRM partizionato per permessi; solo quando concorrenza e requisiti di produzione lo giustificano. Dettagli in `DECISION_LOG.md`, sezione “Evoluzione dell'architettura”.

@@ -33,6 +33,11 @@
 | Nota versionata (13/10/2026) | `data/notes_v2.csv`: NOTE-002-4 del 4/11, data nel testo coerente con `created_at` | Modificare `notes.csv` | Le fixture originali restano intatte; al 12/10 il contesto, e quindi lo snapshot, è identico a prima. |
 | Validità delle proposte del briefing (13/10/2026) | 12 ore invece di 30 minuti; all'approvazione si rifiuta una Task con scadenza già passata rispetto all'orologio | Stessa TTL di 30 minuti | Un briefing preparato all'alba sarebbe scaduto prima che il venditore lo apra. Lo snapshot resta la vera protezione. |
 | Orchestrazione del briefing (13/10/2026) | Temporal **opzionale** (`ORCHESTRATOR=temporal`): ogni analisi è un'activity, ID di workflow per owner e data, retry solo per errori transitori del provider. Default asyncio | Temporal obbligatorio; LangGraph; Celery/RQ | Introdotto dopo il fallimento misurato T1. Temporal risolve proprio quel limite (progresso durevole, idempotenza tra worker, retry selettivi). LangGraph serve a orchestrare il ragionamento, che qui resta tre letture e una decisione. Una coda semplice non conserva il progresso del batch. Opzionale perché la demo non deve dipendere da un servizio in più. |
+| Quando serve un agente (13/10/2026) | Tre strategie sugli stessi dati e con lo stesso validatore: `fixed` (default), `search` (il modello sceglie cosa leggere), `pipeline` (una chiamata con tutto) | Dichiarare che serve un agente | Regola: se i passi si possono scrivere prima di leggere i dati, è una pipeline. Con tre note lo sono; con centinaia di note e contatti il passo successivo dipende dall'ultimo letto. Decide la misura, non l'architettura. |
+| Contesto ampio (13/10/2026) | Fixture v3 generata con seed: fino a 200 note di rumore per caso (note, email, trascrizioni), distrattori con date passate, una seconda iniezione per Helios. Opt-in con `ACCOUNT_NOISE` | Modificare le fixture originali; generare dati con un LLM | Riproducibile e versionata; con `ACCOUNT_NOISE=0` il comportamento e lo snapshot restano identici. Le date nel testo coincidono con `created_at`. |
+| Ricerca (13/10/2026) | Ricerca per parole chiave deterministica, al massimo 5 risultati, budget di 14 chiamate | Database vettoriale, embedding | Fino a 200 note brevi per caso: un indice vettoriale non è giustificato da una limitazione misurata. Da rivalutare se la ricerca per parole chiave risulta il collo di bottiglia nell'evaluation live. |
+| Citazioni (13/10/2026) | Si citano solo note restituite al modello (`search_notes`/`get_note`), non tutte quelle esistenti | Basta che la nota esista | Con la ricerca il modello potrebbe "indovinare" un ID esistente mai letto: la citazione non sarebbe un'evidenza. |
+| Contatto da interpellare (13/10/2026) | `ask_contact_id` solo con `clarify`, solo tra i contatti restituiti da `get_contacts`; nome e ruolo scritti dal server; nessuna email esposta al modello | Il modello scrive il destinatario | Indagine condizionale verificabile: il conflitto su Orion porta a cercare chi decide. Minimizzazione dei dati: il modello non ha strumenti di invio, quindi non gli servono gli indirizzi. |
 | Lingua (12/10/2026) | UI, errori, titoli Task e razionale in italiano; prompt di sistema e note restano in inglese | Tradurre le note del dataset | Le citazioni devono essere sottostringhe esatte delle note originali; le fixture non si modificano. |
 
 ## Osservato durante la costruzione
@@ -141,3 +146,18 @@ Limiti ancora aperti:
 - Il trigger resta il ciclo nel processo, perché l'orologio demo è finto. In produzione andrebbe un Temporal Schedule.
 - I ricontrolli restano nel database e non sono timer durevoli. È una scelta: una sola fonte di verità, annullabile dalla UI e leggibile in SQL.
 - Il crash simulato è un'eccezione nell'activity, non un processo ucciso. Il caso di un worker ucciso si affida al timeout dell'activity, documentato da Temporal ma non provato qui.
+
+## Quando serve un agente — 13/10/2026
+
+Fasi 1 e 2 della roadmap "agente necessario". Il modo per misurarlo è `python -m backend.evaluate --suite scaling --mode openrouter`: stessi cinque casi etichettati con 10, 50 e 200 note di rumore, confrontando `pipeline` e `search`. Per ogni combinazione registra:
+- decisioni corrette;
+- contatto corretto su Orion (etichetta solo nel runner);
+- copertura delle evidenze;
+- token, latenza, letture ed errori.
+
+Demo: 5/5 e contatto corretto per entrambe le strategie a ogni dimensione. È atteso e **non dice nulla**: in demo entrambe sono simulate sulle fixture. Il confronto reale non è ancora stato eseguito. Non dichiarare un vincitore prima di averlo eseguito con un modello fissato e registrato qui i fallimenti osservati.
+
+Ipotesi da verificare, senza conclusioni anticipate:
+- la pipeline potrebbe reggere anche a 200 note, perché i modelli recenti hanno contesti ampi; in quel caso l'agente costa di più senza guadagnare accuratezza e si tiene la pipeline;
+- l'agente potrebbe perdere la nota giusta se le parole chiave non coincidono;
+- il contatto giusto richiede di collegare la nota del CFO al conflitto: è il caso in cui l'indagine condizionale dovrebbe pagare.

@@ -243,8 +243,20 @@ async def analyze(store: Store, oid: str, transport=None, ttl=1800):
     context = store.context(oid)
     trace = []
     started = time.monotonic()
+    strategy = store.settings.strategy
     try:
-        if store.settings.mode == 'demo':
+        if strategy not in ('fixed', 'search', 'pipeline'):
+            raise AgentError('AGENT_STRATEGY deve essere fixed, search oppure pipeline')
+        if strategy != 'fixed':
+            from . import account_agent
+            account = {**context, 'contacts': store.contacts(oid)}
+            trace.append({'event': 'strategy', 'strategy': strategy, 'notes_available': len(context['notes'])})
+        if store.settings.mode == 'demo' and strategy != 'fixed':
+            decision = account_agent.scripted_account(oid, account, store.settings, trace, strategy)
+        elif store.settings.mode == 'openrouter' and strategy != 'fixed':
+            run = account_agent.search_decision if strategy == 'search' else account_agent.pipeline_decision
+            decision = await asyncio.wait_for(run(oid, account, store.settings, trace, transport), timeout=150)
+        elif store.settings.mode == 'demo':
             for name in READ_TOOLS:
                 read_tool(name, {'opportunity_id': oid}, oid, context)
                 trace.append({'event': 'scripted_read', 'tool': name, 'arguments': {'opportunity_id': oid}})

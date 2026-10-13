@@ -1,0 +1,7 @@
+contact_id,account_id,name,role,email
+CON-001-B,ACC-001,Contact 1B,CTO,con-001-b@example.invalid
+CON-002-B,ACC-002,Contact 2B,Head of Planning,con-002-b@example.invalid
+CON-003-B,ACC-003,Contact 3B,CISO,con-003-b@example.invalid
+CON-004-B,ACC-004,Contact 4B,CFO,con-004-b@example.invalid
+CON-004-C,ACC-004,Contact 4C,Procurement,con-004-c@example.invalid
+CON-005-B,ACC-005,Contact 5B,Head of Marketing,con-005-b@example.invalid

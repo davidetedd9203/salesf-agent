@@ -117,13 +117,65 @@ async def evaluate_proactive(mode):
                                   'In demo il ricontrollo e il risveglio sono simulati sulle fixture.'}
 
 
+# Eval-only label: who can resolve the Orion conflict (data/v3 signal note). Never enters the agent's context.
+CONTACT_LABELS = {'OPP-004': 'CON-004-B'}
+
+
+def usage(trace):
+    events = [e for e in trace if e.get('event') == 'model_response']
+    return {'tokens': sum(e['usage'].get('prompt_tokens', 0) + e['usage'].get('completion_tokens', 0) for e in events),
+            'rounds': len(events), 'elapsed_ms': max((e.get('elapsed_ms', 0) for e in trace), default=0),
+            'reads': sum(e.get('event') in ('tool_call', 'scripted_read') and e.get('tool') != 'submit_decision' for e in trace)}
+
+
+async def evaluate_scaling(mode, sizes=(10, 50, 200), strategies=('pipeline', 'search')):
+    """Does an agent that chooses what to read beat one call with everything, as context grows?"""
+    with (ROOT / 'data/ground_truth.csv').open() as f:
+        labels = list(csv.DictReader(f))
+    cases, summary = [], []
+    for size in sizes:
+        for strategy in strategies:
+            with tempfile.TemporaryDirectory() as directory:
+                store = Store(replace(Settings(), db_path=str(Path(directory) / 'eval.sqlite3'), mode=mode, strategy=strategy,
+                                      account_noise=size, briefing_auto=False))
+                rows = []
+                for label in labels:
+                    oid, error = label['opportunity_id'], None
+                    try:
+                        result = await analyze(store, oid)
+                    except Exception as exc:
+                        error = str(exc)
+                        failure = next(a['data'] for a in store.records('audit') if a['event'] == 'analysis_failed' and a['data']['opportunity_id'] == oid)
+                        result = {'trace': failure['trace'], 'detail': failure['error']}
+                    decision = result.get('result')
+                    cited = {e['note_id'] for e in decision['evidence']} if decision else set()
+                    required = set(label['evidence_note_ids'].split(';'))
+                    rows.append({'size': size, 'strategy': strategy, 'opportunity_id': oid, 'expected': label['expected_decision'],
+                                 'actual': decision and decision['decision'], 'decision_match': bool(decision and decision['decision'] == label['expected_decision']),
+                                 'contact_expected': CONTACT_LABELS.get(oid), 'contact_actual': ((decision or {}).get('ask_contact') or {}).get('contact_id'),
+                                 'required_evidence_coverage': len(cited & required) / len(required), **usage(result['trace']),
+                                 'result': result, 'error': error})
+                labelled = [r for r in rows if r['contact_expected']]
+                summary.append({'notes_per_case': f'3 + {size}', 'strategy': strategy, 'decision_matches': sum(r['decision_match'] for r in rows),
+                                'right_contact': sum(r['contact_actual'] == r['contact_expected'] for r in labelled), 'contact_cases': len(labelled),
+                                'tokens': sum(r['tokens'] for r in rows), 'mean_ms': round(sum(r['elapsed_ms'] for r in rows) / len(rows)),
+                                'reads': sum(r['reads'] for r in rows), 'errors': sum(bool(r['error']) for r in rows),
+                                'tasks_created': len(store.records('tasks'))})
+                cases += rows
+    return {'timestamp': datetime.now(timezone.utc).isoformat(), 'suite': 'scaling', 'mode': mode,
+            'model': Settings().model if mode == 'openrouter' else None, 'summary': summary, 'cases': cases,
+            'interpretation': 'Cinque casi etichettati con 10, 50 e 200 note di rumore (data/v3). Confronta una chiamata con tutto il contesto '
+                              'e un agente che sceglie cosa leggere: stessa validazione, stesse etichette. In demo entrambe le strategie sono '
+                              'simulate sulle fixture: il confronto ha senso solo con un modello reale.'}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=['demo','openrouter'], default='demo')
-    parser.add_argument('--suite', choices=['analysis','chat','proactive'], default='analysis')
+    parser.add_argument('--suite', choices=['analysis','chat','proactive','scaling'], default='analysis')
     parser.add_argument('--output', default='reports/evaluation.json')
     args = parser.parse_args()
-    report = asyncio.run({'analysis': evaluate, 'chat': evaluate_chat, 'proactive': evaluate_proactive}[args.suite](args.mode))
+    report = asyncio.run({'analysis': evaluate, 'chat': evaluate_chat, 'proactive': evaluate_proactive, 'scaling': evaluate_scaling}[args.suite](args.mode))
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2))

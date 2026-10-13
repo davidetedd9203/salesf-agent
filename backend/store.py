@@ -57,6 +57,15 @@ class Store:
             with (ROOT / 'data' / 'notes_v2.csv').open() as f:
                 for row in csv.DictReader(f):
                     db.execute('INSERT OR IGNORE INTO notes VALUES (?,?,?)', (row['note_id'], row['opportunity_id'], json.dumps(row)))
+            if settings.account_noise > 0:
+                # v3: account-wide context (data/generate_v3.py). Signal notes always, then the first N distractors.
+                with (ROOT / 'data' / 'v3' / 'notes.csv').open() as f:
+                    for row in csv.DictReader(f):
+                        if int(row.pop('rank')) <= settings.account_noise:
+                            db.execute('INSERT OR IGNORE INTO notes VALUES (?,?,?)', (row['note_id'], row['opportunity_id'], json.dumps(row)))
+                with (ROOT / 'data' / 'v3' / 'contacts.csv').open() as f:
+                    for row in csv.DictReader(f):
+                        db.execute('INSERT OR IGNORE INTO contacts VALUES (?,?,?)', (row['contact_id'], row['account_id'], json.dumps(row)))
         self.base_date = date.fromisoformat(settings.reference_date)
 
     @property
@@ -103,6 +112,13 @@ class Store:
                       if (a := json.loads(r['data']))['completed_at'] <= today]
         tasks = [dict(r) for r in db.execute('SELECT * FROM tasks WHERE opportunity_id=? AND owner=? ORDER BY id', (oid, self.settings.owner_id))]
         return {'opportunity': opp, 'notes': notes, 'activities': activities, 'tasks': tasks}
+
+    def contacts(self, oid):
+        """Contacts of the opportunity's account, owner-checked. Names and roles only: the agent has no use for emails."""
+        with self.connect() as db:
+            account = self.opportunity(oid, db)['account_id']
+            rows = [json.loads(r['data']) for r in db.execute('SELECT data FROM contacts WHERE account_id=? ORDER BY id', (account,))]
+        return [{k: c[k] for k in ('contact_id', 'name', 'role')} for c in rows]
 
     @staticmethod
     def fingerprint(context):
