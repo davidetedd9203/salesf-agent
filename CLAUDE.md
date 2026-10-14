@@ -6,7 +6,7 @@ Leggi README.md, docs/DECISION_LOG.md e docs/PANEL_WALKTHROUGH.md prima di modif
 Progetto per il colloquio Salesforce FDE, per un solo Account Executive. Il panel valuta impostazione del problema, scelte, guardrail e fallimenti osservati. Preferisci una soluzione piccola e ispezionabile all'ampiezza di funzionalità.
 
 ## Comandi
-Python 3.12+, Node 22+. `pip install -r requirements-dev.txt`; `pytest -q`; `python -m backend.evaluate --mode demo`; `uvicorn backend.main:app --host 127.0.0.1 --port 8000`. Frontend: `cd frontend && npm ci && npm run dev`; verifica di produzione: `npm run build`.
+Python 3.12+, Node 22+. Dipendenze gestite con uv (`pyproject.toml`, `uv.lock`), non pip: `uv sync`; `uv run pytest -q`; `uv run python -m backend.evaluate --mode demo`; `uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000`. Frontend: `cd frontend && npm ci && npm run dev`; verifica di produzione: `npm run build`.
 
 ## Invarianti
 1. L'owner è scelto lato server dall'identità demo autenticata. Nessun override dell'owner da modello o client.

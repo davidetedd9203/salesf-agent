@@ -1,0 +1,36 @@
+# Render Blueprint for a temporary online demo. Two Docker web services; secrets are entered in the dashboard.
+# Free instances sleep after 15 minutes and lose the SQLite database on restart: open the app a few minutes before the panel.
+services:
+  - type: web
+    name: sales-copilot-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: AGENT_MODE
+        value: openrouter
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        sync: false
+      # Public URL of the frontend service, e.g. https://sales-copilot.onrender.com: POSTs from any other origin are rejected.
+      - key: APP_ORIGIN
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      # Never the README's local-demo password on a public URL: read the generated value in the dashboard.
+      - key: DEMO_PASSWORD
+        generateValue: true
+  - type: web
+    name: sales-copilot
+    runtime: docker
+    dockerfilePath: ./Dockerfile.frontend
+    plan: free
+    envVars:
+      # Public URL of the API service, e.g. https://sales-copilot-api.onrender.com (free services cannot receive private traffic).
+      # Used at build time: redeploy the frontend after changing it.
+      - key: BACKEND_URL
+        sync: false
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

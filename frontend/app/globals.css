@@ -146,7 +146,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;b
 .audit-list details{border-bottom:1px solid var(--line);padding:0 16px}
 .audit-list summary{display:flex;justify-content:space-between;gap:20px;color:var(--ink)}
 .audit-list summary span{font-size:12px;color:var(--muted);font-weight:400}
-footer{color:var(--muted);font-size:12px;line-height:1.6;padding:20px 0 0;text-align:center}
+footer{color:var(--muted);font-size:12px;line-height:1.6;padding:20px 0 64px;text-align:center}
 
 @media(max-width:1150px){.split{grid-template-columns:1fr}.detail{position:static}.user p{display:none}}
 @media(max-width:650px){
@@ -159,11 +159,12 @@ h1{font-size:20px}.toolbar{align-items:stretch;flex-direction:column}.search-lab
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* Assistente (chat) */
-.chat{background:#fff;border:1px solid var(--line);border-radius:4px;box-shadow:0 2px 2px #0000001a;margin-top:16px}
+.chat{position:fixed;right:20px;bottom:84px;z-index:5;width:min(440px,calc(100vw - 40px));max-height:min(680px,calc(100dvh - 120px));display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px #00000033}
+.chat-launcher{position:fixed;right:20px;bottom:20px;z-index:5;min-height:52px;min-width:52px;padding:0 20px;border-radius:26px;box-shadow:0 4px 12px #00000040;font-size:15px}
 .chat-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)}
 .chat-heading h2{margin:0}
-.chat-heading span{font-size:12px;color:var(--muted)}
-.chat-log{display:flex;flex-direction:column;gap:12px;padding:16px;max-height:420px;overflow:auto}
+.chat-heading span{display:block;font-size:12px;color:var(--muted)}
+.chat-log{display:flex;flex-direction:column;gap:12px;padding:16px;flex:1;min-height:0;overflow:auto}
 .bubble{max-width:min(720px,92%);padding:10px 14px;border-radius:4px}
 .bubble p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .bubble.assistant{align-self:flex-start;background:var(--paper)}
@@ -199,3 +200,6 @@ h1{font-size:20px}.toolbar{align-items:stretch;flex-direction:column}.search-lab
 .clock input{width:auto;min-height:32px;padding:4px 8px}
 .clock button{min-height:32px;padding:0 10px;font-size:13px}
 @media(max-width:650px){.clock{justify-content:flex-start;flex-wrap:wrap}}
+@media(max-width:650px){.chat{inset:0;width:auto;max-height:none;border-radius:0}.chat-launcher[aria-expanded=true]{display:none}}
+.steps{margin:6px 0 0;padding-left:20px;font-size:12px;color:var(--weak);line-height:1.6}
+.steps .pending{display:flex;align-items:center;gap:8px;color:var(--muted)}.steps .spinner{width:12px;height:12px;border-width:2px}

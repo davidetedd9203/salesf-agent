@@ -18,7 +18,7 @@ from backend.store import Store
 
 @pytest.fixture
 def store(tmp_path):
-    return Store(Settings(db_path=str(tmp_path / 'crm.sqlite3'), mode='demo', briefing_auto=False))
+    return Store(Settings(db_path=str(tmp_path / 'crm.sqlite3'), mode='demo', briefing_auto=False, orchestrator='asyncio'))
 
 
 def approve(store, oid):

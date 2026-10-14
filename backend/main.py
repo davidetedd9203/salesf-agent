@@ -1,9 +1,11 @@
 import asyncio
+import json
 import secrets
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from .agent import AgentError, analyze
 from .briefing import run_briefing
@@ -216,11 +218,28 @@ def create_app(settings=None):
         # Shares the analysis lock: one model call at a time for this single-user demo.
         if analysis_lock.locked():
             raise HTTPException(429, "Un'altra richiesta al modello è in corso")
-        async with analysis_lock:
-            try:
-                return await chat(store, [m.model_dump() for m in body.messages])
-            except AgentError as error:
-                raise HTTPException(502, str(error))
+
+        async def stream():
+            # NDJSON: each observable tool event as it happens, then the reply or the error.
+            line = lambda data: json.dumps(data, ensure_ascii=False) + '\n'
+            if analysis_lock.locked():
+                yield line({'error': "Un'altra richiesta al modello è in corso"})
+                return
+            async with analysis_lock:
+                events = asyncio.Queue()
+                task = asyncio.create_task(chat(store, [m.model_dump() for m in body.messages], on_event=events.put_nowait))
+                task.add_done_callback(lambda _: events.put_nowait(None))
+                try:
+                    while (event := await events.get()) is not None:
+                        yield line({'step': event})
+                    try:
+                        yield line({'reply': task.result()})
+                    except AgentError as error:
+                        yield line({'error': str(error)})
+                finally:
+                    task.cancel()  # Client gone: stop paying for a reply nobody reads.
+
+        return StreamingResponse(stream(), media_type='application/x-ndjson')
 
     @app.post('/api/proposals/{pid}/approve', dependencies=[Depends(authorized)])
     def approve(pid: str, body: ApprovalRequest):

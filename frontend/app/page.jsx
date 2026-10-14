@@ -20,6 +20,19 @@ async function api(path, body) {
   return data;
 }
 
+// Observable tool events from the server trace, in words; never the model's private reasoning.
+const sorts = {priority: 'priorità', amount: 'valore', close_date: 'data di chiusura'};
+function step(t) {
+  if (t.event === 'simulation') return t.detail;
+  if (t.event === 'model_response') return `Round ${t.step} del modello: ${t.tool_calls} tool call${t.duplicates_dropped ? `, ${t.duplicates_dropped} duplicate scartate` : ''} · ${t.elapsed_ms} ms`;
+  if (t.event === 'tool_call' && t.tool === 'list_opportunities') return `Query: ordina per ${sorts[t.arguments.sort] || t.arguments.sort}${t.arguments.stage ? `, fase ${t.arguments.stage}` : ''}${t.arguments.only_candidates ? ', solo candidate' : ''}, max ${t.arguments.limit ?? 5}`;
+  if (t.event === 'tool_call' && t.tool === 'reply') return `Risposta proposta con ${t.arguments.opportunity_ids?.length ?? 0} opportunità; il server verifica che siano tutte nella query`;
+  if (t.event === 'tool_call') return `Tool richiesto: ${t.tool}`;
+  if (t.event === 'call_rejected') return `Chiamata rifiutata dal server: ${t.error}`;
+  if (t.event === 'malformed_call') return 'Tool call malformata, rifiutata';
+  return t.event;
+}
+
 export default function Home() {
   const [signedIn, setSignedIn] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -44,10 +57,11 @@ export default function Home() {
   const [revisits, setRevisits] = useState([]);
   const [goals, setGoals] = useState([]);
   const [clockDate, setClockDate] = useState('2026-11-05');
+  const [chatOpen, setChatOpen] = useState(false);
   const chatLog = useRef(null);
   const mergedBriefing = useRef('');
 
-  useEffect(() => {chatLog.current?.scrollTo({top: chatLog.current.scrollHeight});}, [messages]);
+  useEffect(() => {chatLog.current?.scrollTo({top: chatLog.current.scrollHeight});}, [messages, chatOpen]);
 
   async function refresh() {
     const [c, o, t, a, b, r, g] = await Promise.all([api('config'), api('opportunities'), api('tasks'), api('audit'), api('briefing'), api('revisits'), api('goals')]);
@@ -109,12 +123,30 @@ export default function Home() {
     const content = text.trim();
     if (!content || busy) return;
     const history = [...messages.filter(m => !m.local && !m.error), {role: 'user', content}].slice(-11);
-    setMessages(old => [...old, {role: 'user', content}]); setQuestion(''); setError(''); setBusy('L’assistente sta cercando');
+    const update = patch => setMessages(old => [...old.slice(0, -1), {...old.at(-1), ...patch(old.at(-1))}]);
+    setMessages(old => [...old, {role: 'user', content}, {role: 'assistant', content: '', trace: [], streaming: true}]);
+    setQuestion(''); setError(''); setBusy('L’assistente sta cercando');
     try {
-      const reply = await api('chat', {messages: history.map(({role, content}) => ({role, content}))});
-      setMessages(old => [...old, {role: 'assistant', content: reply.message, ids: reply.opportunity_ids, mode: reply.mode}]);
+      const response = await fetch('/api/chat', {method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({messages: history.map(({role, content}) => ({role, content}))})});
+      if (!response.ok) {
+        const detail = await response.json().then(d => d.detail, () => null);
+        throw new Error(typeof detail === 'string' ? detail : `Richiesta fallita (${response.status}).`);
+      }
+      // NDJSON from the server: one observable step per line while the model works, then the reply or the error.
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '', replied = false;
+      for (let chunk; !(chunk = await reader.read()).done;) {
+        const lines = (buffer += chunk.value).split('\n'); buffer = lines.pop();
+        for (const event of lines.filter(Boolean).map(JSON.parse)) {
+          if (event.error) throw new Error(event.error);
+          if (event.step) update(m => ({trace: [...m.trace, event.step]}));
+          if (event.reply) {replied = true; update(() => ({content: event.reply.message, ids: event.reply.opportunity_ids, mode: event.reply.mode, streaming: false}));}
+        }
+      }
+      if (!replied) throw new Error('la risposta si è interrotta.');
     } catch (e) {
-      setMessages(old => [...old, {role: 'assistant', error: true, content: `Non sono riuscito a rispondere: ${e.message}`}]);
+      update(() => ({error: true, streaming: false, content: `Non sono riuscito a rispondere: ${e.message}`}));
     } finally {setBusy('');}
   }
 
@@ -146,7 +178,9 @@ export default function Home() {
 
   function selectOpportunity(oid) {
     setSelected(oid); setReview(null);
+    if (view !== 'Oggi' && view !== 'Opportunità') setView('Opportunità');
     if (window.matchMedia('(max-width: 650px)').matches) {
+      setChatOpen(false);
       requestAnimationFrame(() => document.getElementById('selected-opportunity')?.scrollIntoView({block: 'start'}));
     }
   }
@@ -191,7 +225,9 @@ export default function Home() {
         {view === 'Oggi' && briefing && <section className="briefing" aria-label="Briefing del mattino">
           <div className="chat-heading"><h2>Briefing del mattino · {briefing.briefing_date}</h2><span>{briefing.status === 'ready'
             ? `Preparato dall’agente alle ${new Date(briefing.created_at).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}, senza una tua richiesta · ${briefing.mode === 'demo' ? 'simulazione scriptata' : 'modello reale'} · nessuna Task creata`
-            : 'Avviato dal server una volta per data'}</span></div>
+            : 'Avviato dal server una volta per data'}
+            {briefing.orchestrator === 'temporal' && <> · {/* ponytail: default Temporal dev-server UI address; make it configurable if the server moves. */}
+              <a href={`http://localhost:8233/namespaces/default/workflows/briefing-AE-001-${briefing.briefing_date}`} target="_blank" rel="noreferrer">workflow Temporal</a></>}</span></div>
           {briefing.status === 'disabled' && <p className="briefing-body muted">Briefing automatico disattivato (BRIEFING_AUTO=false).</p>}
           {(briefing.status === 'pending' || briefing.status === 'running') && <div className="working briefing-body" role="status"><span className="spinner" aria-hidden="true"/>L’agente sta preparando il briefing di oggi…</div>}
           {briefing.status === 'ready' && <div className="briefing-body">
@@ -213,20 +249,6 @@ export default function Home() {
           {revisits.length > 0 && <div className="briefing-body revisits"><h3>Ricontrolli programmati dall’agente</h3><ul>{revisits.map(r => <li key={r.id}>
             <span>{opportunities.find(o => o.opportunity_id === r.opportunity_id)?.account_name} · {r.due_date}</span>
             <button className="text-button" onClick={() => cancelRevisit(r.id)}>Annulla</button></li>)}</ul></div>}
-        </section>}
-        {view === 'Oggi' && <section className="chat" aria-label="Assistente">
-          <div className="chat-heading"><h2>Assistente</h2><span>{config.mode === 'demo' ? 'Simulazione a parole chiave · nessun LLM' : 'Sola lettura · propone, non agisce'}</span></div>
-          <div className="chat-log" aria-live="polite" ref={chatLog}>{messages.map((m, i) => <div key={i} className={`bubble ${m.role}${m.error ? ' failed' : ''}`}>
-            <p>{m.content}</p>
-            {m.ids?.length > 0 && <><ol className="chat-cards">{m.ids.map(id => {const o = opportunities.find(x => x.opportunity_id === id); return o && <li key={id}><button className="chat-card" onClick={() => selectOpportunity(id)}><strong>{o.account_name}</strong><span>{money(o.amount_eur)} · chiusura {o.close_date}</span><span>{results[id]?.result ? labels[results[id].result.decision] : o.candidate_reasons[0] || o.stage}</span></button></li>;})}</ol>
-              <button className="secondary" disabled={!!busy || !config.ready} onClick={() => investigate(m.ids)}>Analizza {m.ids.length === 1 ? 'questa opportunità' : `queste ${m.ids.length}`}</button></>}
-          </div>)}</div>
-          <div className="chips">{suggestions.map(s => <button key={s} className="chip" disabled={!!busy || !config.ready} onClick={() => ask(s)}>{s}</button>)}</div>
-          <form className="chat-input" onSubmit={e => {e.preventDefault(); ask(question);}}>
-            <label htmlFor="question" className="visually-hidden">Fai una domanda all'assistente</label>
-            <input id="question" value={question} maxLength={1000} placeholder="Es. quali opportunità in Negotiation chiudono prima?" onChange={e => setQuestion(e.target.value)}/>
-            <button className="primary" disabled={!!busy || !config.ready || !question.trim()}>Invia</button>
-          </form>
         </section>}
         <div className="toolbar"><label className="search-label" htmlFor="search">Cerca un’opportunità<input id="search" type="search" placeholder="Cerca account o fase" value={search} onChange={e => setSearch(e.target.value)}/></label></div>
         <div className="split"><section className="queue" aria-label="Opportunità"><div className="queue-heading"><h2>{view === 'Oggi' ? 'Coda di revisione' : 'Portafoglio opportunità'}</h2><span>{visible.length} record</span></div>
@@ -250,6 +272,23 @@ export default function Home() {
       </>}
       {view === 'Task' && <section className="records"><table><thead><tr><th>Task</th><th>Account</th><th>Scadenza</th><th>Approvazione</th><th>Stato</th></tr></thead><tbody>{tasks.map(t => <tr key={t.id}><td>{t.title}</td><td>{opportunities.find(o => o.opportunity_id === t.opportunity_id)?.account_name}</td><td>{t.due_date}</td><td><span className="status no_action">Approvata da te</span></td><td>{t.completed_at ? `Completata il ${t.completed_at}` : <button className="text-button" onClick={() => post(`tasks/${t.id}/complete`, 'Task completata: chiuso anche l’obiettivo collegato.')}>Segna completata</button>}</td></tr>)}</tbody></table>{!tasks.length && <div className="empty"><h2>Ancora nessuna Task approvata</h2><p>Analizza un’opportunità, rivedi la proposta, poi conferma la Task.</p></div>}</section>}
       {view === 'Registro evidenze' && <section className="audit-list">{audit.map(a => <details key={a.id}><summary><strong>{a.event.replaceAll('_',' ')}</strong><span>{new Date(a.created_at).toLocaleString('it-IT')}</span></summary><pre>{JSON.stringify(a.data, null, 2)}</pre></details>)}{!audit.length && <div className="empty">Esegui un’analisi per vedere eventi di tool e validazione.</div>}</section>}
+      <button className="chat-launcher primary" aria-expanded={chatOpen} aria-controls="chat" aria-label={chatOpen ? 'Chiudi l’assistente' : undefined} onClick={() => setChatOpen(o => !o)}>{chatOpen ? '✕' : 'Assistente'}</button>
+      {chatOpen && <section id="chat" className="chat" aria-label="Assistente" onKeyDown={e => e.key === 'Escape' && setChatOpen(false)}>
+        <div className="chat-heading"><div><h2>Assistente</h2><span>{config.mode === 'demo' ? 'Simulazione a parole chiave · nessun LLM' : 'Sola lettura · propone, non agisce'}</span></div><button className="text-button" aria-label="Chiudi l’assistente" onClick={() => setChatOpen(false)}>✕</button></div>
+        <div className="chat-log" aria-live="polite" ref={chatLog}>{messages.map((m, i) => <div key={i} className={`bubble ${m.role}${m.error ? ' failed' : ''}`}>
+          {m.content && <p>{m.content}</p>}
+          {(m.streaming || m.trace?.length > 0) && <details className="trace" open={!!m.streaming}><summary>{m.streaming ? 'Sta lavorando…' : 'Passaggi dell’assistente'}</summary><ol className="steps">{m.trace.map((t, j) => <li key={j}>{step(t)}</li>)}
+            {m.streaming && <li className="pending"><span className="spinner" aria-hidden="true"/>{m.trace.length ? 'Il server esegue, poi il modello continua…' : 'Il modello sta scegliendo la query…'}</li>}</ol></details>}
+          {m.ids?.length > 0 && <><ol className="chat-cards">{m.ids.map(id => {const o = opportunities.find(x => x.opportunity_id === id); return o && <li key={id}><button className="chat-card" onClick={() => selectOpportunity(id)}><strong>{o.account_name}</strong><span>{money(o.amount_eur)} · chiusura {o.close_date}</span><span>{results[id]?.result ? labels[results[id].result.decision] : o.candidate_reasons[0] || o.stage}</span></button></li>;})}</ol>
+            <button className="secondary" disabled={!!busy || !config.ready} onClick={() => investigate(m.ids)}>Analizza {m.ids.length === 1 ? 'questa opportunità' : `queste ${m.ids.length}`}</button></>}
+        </div>)}{busy && !messages.at(-1)?.streaming && <p className="muted" role="status">{busy}…</p>}</div>
+        <div className="chips">{suggestions.map(s => <button key={s} className="chip" disabled={!!busy || !config.ready} onClick={() => ask(s)}>{s}</button>)}</div>
+        <form className="chat-input" onSubmit={e => {e.preventDefault(); ask(question);}}>
+          <label htmlFor="question" className="visually-hidden">Fai una domanda all'assistente</label>
+          <input id="question" autoFocus value={question} maxLength={1000} placeholder="Es. quali opportunità in Negotiation chiudono prima?" onChange={e => setQuestion(e.target.value)}/>
+          <button className="primary" disabled={!!busy || !config.ready || !question.trim()}>Invia</button>
+        </form>
+      </section>}
       <footer>Analisi in sola lettura. La creazione di Task richiede la tua approvazione. Nessuna email automatica né cambio di fase nel CRM.<br/>Demo indipendente con stile ispirato a Salesforce Lightning; non è un prodotto Salesforce.</footer>
     </main>
   </div>;

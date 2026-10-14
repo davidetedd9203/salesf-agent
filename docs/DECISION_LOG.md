@@ -137,6 +137,7 @@ Rischi nuovi, non ancora misurati: fatica da notifiche (metrica proposta: quota 
 | # | Cosa è successo | Risposta del sistema | Azione |
 |---|---|---|---|
 | T1 | Riprodotto in test (`tests/test_temporal.py`): un errore non gestito durante la terza analisi del briefing con il ciclo asyncio. Al riavvio il briefing riparte da zero: **Acme analizzata due volte**, quindi pagata due volte in modalità live. Effetto non previsto: il ricontrollo di Northstar, salvato prima del crash, la esclude dal briefing rifatto, che **perde Northstar in silenzio**. | Nessun briefing salvato dopo il crash, nessuna Task creata. Il secondo effetto però non è visibile all'utente. | Temporal opzionale: ogni analisi è un'activity. Stesso scenario: 5 analisi esattamente una volta, solo il passo fallito ritentato, Northstar presente. |
+| T2 | 14/10/2026, crash reale con `glm-5.3`: backend terminato con `taskkill /F` dopo 2 analisi su 5 del briefing. Senza heartbeat l'analisi in corso al momento del crash sarebbe ripartita solo allo scadere del timeout di 120 secondi. | Dopo il riavvio il workflow riprende: 5 analisi registrate una volta ciascuna, 1 briefing salvato. Due round del modello hanno impiegato oltre 60 secondi, per latenza del provider. | Heartbeat ogni 2 secondi, timeout 10 secondi: l'analisi interrotta riparte come tentativo 2, due secondi dopo il riavvio. È l'unica analisi pagata due volte. |
 
 Cosa imponiamo con Temporal, verificato con un server Temporal locale nei test:
 - un secondo avvio per la stessa data riusa lo stesso workflow (`briefing-AE-001-<data>`);

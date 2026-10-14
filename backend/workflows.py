@@ -6,6 +6,7 @@ Here every analysis is an activity: completed ones are recorded in workflow hist
 provider errors are retried, validation failures are results and never retried, and one workflow ID per owner and
 date prevents a second run even with several workers. Production trigger: a Temporal Schedule at 07:00 per user.
 """
+import asyncio
 from dataclasses import replace
 from datetime import timedelta
 
@@ -40,7 +41,16 @@ class BriefingActivities:
 
     @activity.defn
     async def analyze_opportunity(self, day: str, oid: str, why: str) -> dict:
-        return await analyze_item(self.store(day), oid, why, transient=(ProviderError,))
+        # Heartbeats let Temporal notice a dead worker in seconds, not after the 120-second timeout.
+        async def beat():
+            while True:
+                activity.heartbeat()
+                await asyncio.sleep(2)
+        beating = asyncio.create_task(beat())
+        try:
+            return await analyze_item(self.store(day), oid, why, transient=(ProviderError,))
+        finally:
+            beating.cancel()
 
     @activity.defn
     async def save_briefing(self, day: str, trigger: str, items: list[dict]) -> dict:
@@ -57,7 +67,7 @@ class MorningBriefing:
         for oid, why in picked:  # Sequential on purpose: one model call at a time, as in the asyncio path.
             items.append(await workflow.execute_activity_method(
                 BriefingActivities.analyze_opportunity, args=[day, oid, why],
-                start_to_close_timeout=timedelta(seconds=120), retry_policy=RETRY))
+                start_to_close_timeout=timedelta(seconds=120), heartbeat_timeout=timedelta(seconds=10), retry_policy=RETRY))
         return await workflow.execute_activity_method(
             BriefingActivities.save_briefing, args=[day, trigger, items], start_to_close_timeout=timedelta(seconds=30))
 

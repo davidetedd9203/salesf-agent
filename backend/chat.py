@@ -119,8 +119,19 @@ async def openrouter_chat(store, history, trace, transport=None):
     raise AgentError('La chat ha raggiunto il limite di round senza risposta')
 
 
-async def chat(store: Store, history, transport=None):
-    trace = []
+class LiveTrace(list):
+    """Forwards each observable event as it is recorded, so the UI can show steps while the model runs."""
+    def __init__(self, on_event):
+        super().__init__()
+        self.on_event = on_event
+
+    def append(self, event):
+        super().append(event)
+        self.on_event(event)
+
+
+async def chat(store: Store, history, transport=None, on_event=lambda event: None):
+    trace = LiveTrace(on_event)
     try:
         if store.settings.mode == 'demo':
             reply = scripted_chat(store, history[-1]['content'])
@@ -135,4 +146,5 @@ async def chat(store: Store, history, transport=None):
             raise AgentError('La chat ha superato il tempo massimo. Riprova.') from error
         raise AgentError('Risposta della chat non valida.') from error
     store.audit('chat_completed', {'question': history[-1]['content'][:300], 'reply': reply, 'trace': trace, 'mode': store.settings.mode})
-    return {**reply, 'mode': store.settings.mode}
+    # Observable tool events only, the same trace as the audit: never the model's private reasoning.
+    return {**reply, 'mode': store.settings.mode, 'trace': trace}
