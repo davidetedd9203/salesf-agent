@@ -27,6 +27,8 @@ class Settings:
     account_noise: int = int(os.getenv('ACCOUNT_NOISE', '0'))
     # asyncio (default, no extra service) or temporal (durable workflow, see backend/workflows.py).
     orchestrator: str = os.getenv('ORCHESTRATOR', 'asyncio')
+    # plain (default): rep decisions on blocked goals handled by the store. graph: same steps as a LangGraph graph (experiment).
+    followthrough: str = os.getenv('FOLLOWTHROUGH', 'plain')
     temporal_address: str = os.getenv('TEMPORAL_ADDRESS', 'localhost:7233')
     temporal_task_queue: str = os.getenv('TEMPORAL_TASK_QUEUE', 'sales-copilot-briefing')
 

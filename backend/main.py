@@ -11,7 +11,7 @@ from .agent import AgentError, analyze
 from .briefing import run_briefing, workflow_id
 from .chat import chat
 from .config import Settings
-from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, ClockRequest, LoginRequest
+from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, ClockRequest, GoalDecision, LoginRequest
 from .store import Store
 
 
@@ -26,6 +26,8 @@ def create_app(settings=None):
     temporal = {}
     if settings.orchestrator not in ('asyncio', 'temporal'):
         raise ValueError('ORCHESTRATOR deve essere asyncio oppure temporal')
+    if settings.followthrough not in ('plain', 'graph'):
+        raise ValueError('FOLLOWTHROUGH deve essere plain oppure graph')
 
     async def ensure_briefing(trigger):
         """Proactive trigger: runs without a user request, once per demo date, under the shared model lock."""
@@ -168,6 +170,18 @@ def create_app(settings=None):
     @app.get('/api/goals', dependencies=[Depends(authorized)])
     def goals():
         return store.goals()
+
+    @app.post('/api/goals/{gid}/decision', dependencies=[Depends(authorized)])
+    async def decide_goal(gid: str, body: GoalDecision):
+        try:
+            if settings.followthrough == 'graph':
+                from . import goals_graph
+                await goals_graph.resume(store, gid, body)
+            else:
+                store.decide_goal(gid, body)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
 
     @app.post('/api/goals/{gid}/cancel', dependencies=[Depends(authorized)])
     def cancel_goal(gid: str):

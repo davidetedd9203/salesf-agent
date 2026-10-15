@@ -38,7 +38,11 @@ async def analyze_item(store: Store, oid, why, transient=()):
             goal = next((g for g in store.goals(due_only=True) if g['opportunity_id'] == oid), None)
             if not goal:
                 raise AgentError("Obiettivo già aggiornato o chiuso")  # e.g. a retried activity after the update.
-            item['goal_check'] = await check_goal(store, goal)
+            if store.settings.followthrough == 'graph':
+                from . import goals_graph
+                item['goal_check'] = await goals_graph.run(store, goal)
+            else:
+                item['goal_check'] = await check_goal(store, goal)
         else:
             item['analysis'] = await analyze(store, oid, ttl=TTL)
     except transient:

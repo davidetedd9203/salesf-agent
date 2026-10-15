@@ -68,6 +68,18 @@ class GoalCheck(StrictModel):
         return self
 
 
+class GoalDecision(StrictModel):
+    """The rep's answer to a blocked or escalated goal: follow it to a new date, or drop it. Never from the model."""
+    action: Literal['reschedule', 'drop']
+    due_date: date | None = None
+
+    @model_validator(mode='after')
+    def coherent(self):
+        if (self.action == 'reschedule') != (self.due_date is not None):
+            raise ValueError('Only reschedule takes a due date, and must have one')
+        return self
+
+
 class ListQuery(StrictModel):
     sort: Literal['priority', 'amount', 'close_date']
     stage: Literal['Discovery', 'Qualification', 'Proposal', 'Negotiation'] | None = None

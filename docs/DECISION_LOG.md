@@ -75,6 +75,7 @@ Eseguiti con `python -m backend.evaluate --mode openrouter`, chiave free tier Op
 | F9 | `z-ai/glm-5.3` (esecuzione 1) | Su OPP-003 `task` di nuovo come stringa JSON, anche dopo il feedback. | Rifiutata. | Schema inline. |
 | F10 | `z-ai/glm-5.3` (esecuzione 2, con tool per fasi e schema inline) | Nessuna decisione anticipata, nessuna nota inventata, `task` sempre oggetto. Però in 4/5 ha inviato **due `submit_decision` identici** nello stesso turno (e una lettura duplicata). 1/5 accettata. | Rifiutate dalla regola “una sola chiamata finale”. | Riduzione dei duplicati identici. |
 | F11 | `z-ai/glm-5.3` (esecuzioni 3 e 4) | **5/5 in entrambe**, nessuna correzione necessaria, 0 Task senza approvazione, 2 duplicati scartati per caso (tranne Orion), circa 7–9 secondi e 2.100–2.900 token per opportunità, $0.014–0.015 a esecuzione. Spesa totale della sessione: $0.074. | — | Ancora da fare: casi avversari e parafrasi in cieco. Cinque fixture non bastano a generalizzare. |
+| F12 (15/10/2026) | `z-ai/glm-5.3`, suite `analysis` e `goals` | Acme: la prima chiamata legge `get_opportunity` con un ID inventato (`OPP-2023-0117`), negata dall'allowlist. BluePeak: `question: "null"` come stringa con `recommend`, rifiutata; nella correzione il modello esaurisce i 4.000 token. Analysis 3/5 (era 5/5 il 12/10 e nel briefing di stamattina). | Fallimento chiuso: nessuna proposta, nessuna Task. | Stesso modello e stesso codice: variazione del provider, non misurata prima. Da fare: registrare il provider effettivo dalla risposta di OpenRouter e valutare `provider.order` fisso; output strutturati strict (fase 1 dell'evoluzione) per la classe "null" come stringa. La demo su Render usa questo modello: rieseguire `--suite analysis` il giorno del panel. |
 
 **Revisione manuale delle esecuzioni 3–4 di GLM.** Tutte le citazioni sono esatte. Priorità alta solo su BluePeak (scadenza a un giorno). Acme cita anche NOTE-001-3 (prezzo rinviato a dopo la demo) nell'esecuzione 4: pertinente ma non necessaria. Su Helios il razionale dichiara di ignorare l'iniezione e non cita NOTE-005-2, quindi la copertura degli ID vale 0 con comportamento corretto: va rivista la metrica, non il modello. Le date nelle note precedono quelle dei metadati, ma nessuna esecuzione l'ha segnalato: il conflitto temporale non è stato rilevato, semplicemente non ha cambiato la decisione su queste fixture.
 
@@ -126,6 +127,8 @@ Principio: ogni componente si aggiunge quando una limitazione misurata lo giusti
 | 3. Pipeline fissa vs agente | L'agente non batte un'estrazione a passo fisso a parità di dataset | Tenere la pipeline fissa (una chiamata con tutto il contesto) | Le tre letture sono sempre obbligatorie: oggi l'autonomia è minima. |
 | 4. Workflow durevole | Analisi in batch lunghe, ripresa dopo crash, approvazioni asincrone | **Fatto per il briefing (T1)**: Temporal opzionale. Prossimo passo: Temporal Schedule alle 07:00 per utente al posto del ciclo nel processo; ricontrolli come timer durevoli | Il crash a metà briefing è stato riprodotto e misurato; le singole analisi manuali restano nel loop Python. |
 | 5. Salesforce | Utilità validata con un venditore | Sandbox via REST API con OAuth 2.0 (JWT bearer), permessi mappati all'utente, Task via API con controllo di concorrenza su `LastModifiedDate` (header condizionale `If-Unmodified-Since`); valutare Agentforce + Einstein Trust Layer se il cliente è già su quella piattaforma | Identità e permessi reali sostituiscono `AE-001` e lo snapshot locale. |
+| 6. Grafo con pause umane | Un flusso di più passi che si ferma per giorni in attesa del venditore e riprende, oltre a obiettivi e ricontrolli | LangGraph (`interrupt`, checkpointer), dentro Temporal se serve la durabilità del batch | **Provato il 15/10/2026 sul follow-through: non adottato**, vedi "Esperimento LangGraph". Da riprovare quando i rami sono più di uno o due e i cicli scritti a mano divergono. |
+| 7. Compiti aperti | Domande senza una sequenza scrivibile prima ("perché perdiamo deal in Negotiation?") su più account, oltre il budget di round di `search` (S1) | Deep agent: piano, sotto-agenti con contesto isolato, filesystem solo virtuale | Il confronto da battere è una map-reduce fissa (analisi per account + una sintesi). Stessi confini: sola lettura, citazioni verificate, scritture solo dall'approvazione. Prima validare con un venditore che queste domande servano. |
 | 6. Scala | Più utenti concorrenti | Postgres, sessioni e rate limit in Redis, worker multipli | Le sessioni in memoria sono il limite noto attuale. |
 
 Non consigliati senza misura: multi-agente, database vettoriale (tre note per opportunità stanno nel contesto), invio automatico di email.
@@ -211,3 +214,29 @@ Limiti noti:
 - la policy è uguale per tutti i tipi di obiettivo;
 - un obiettivo raggiunto non chiude la Task e resta al venditore farlo: è voluto, ma è un passaggio in più;
 - se nessuno legge il briefing, l'escalation non va da nessuna parte. Serve un canale e va misurato il rischio di fatica da notifiche.
+
+## Esperimento LangGraph — 15/10/2026
+
+Branch `experiment/langgraph-followthrough`. Domanda: LangGraph semplifica il follow-through quando il flusso deve fermarsi in attesa del venditore e poi riprendere?
+
+Funzione aggiunta in entrambe le versioni: un obiettivo bloccato o in escalation ora aspetta una decisione del venditore, "Sposta" a una nuova data (tra domani e 90 giorni) oppure "Non serve più". La decisione è uno schema Pydantic validato dal server (`GoalDecision`), mai scritta dal modello.
+
+- `plain` (default): `Store.decide_goal`, un `UPDATE` condizionato allo stato `blocked`/`escalated`, più l'endpoint `POST /api/goals/{id}/decision`.
+- `graph` (`FOLLOWTHROUGH=graph`): `backend/goals_graph.py`, nodi `read → decide → wait_rep`; `wait_rep` è un `interrupt` salvato da un checkpointer SQLite e ripreso con `Command(resume=...)`. Usa le stesse funzioni: `read_outcome`, `apply_check`, `decide_goal`.
+
+| Misura | plain | graph |
+|---|---|---|
+| Codice specifico | 0 righe in più (19 in `store.py` condivise) | +73 righe (`goals_graph.py`) |
+| Dipendenze Python (con dev) | 28 | 57 (`langchain-core`, `langsmith`, `aiosqlite`, `sqlite-vec`…), `uv.lock` +898 righe |
+| Test (`tests/test_goal_decision.py`) | 6/6 | 6/6 |
+| Suite `goals` demo | 7/7 | 7/7 |
+| Suite `goals` live (`z-ai/glm-5.3`, una esecuzione) | 1/7 | 1/7 |
+| Tempo per controllo (demo, mediana di 10) | 3,3 ms | 18,2 ms (+~300 ms di import) |
+
+Il live non distingue le due versioni: falliscono a monte le analisi del mattino (F12), quindi gli obiettivi quasi non nascono. Il follow-through usa lo stesso codice di lettura in entrambe.
+
+Fallimento osservato:
+- G1: con `graph`, se `wait_rep` fallisce dopo una ripresa (data non valida), la ripresa successiva ripropone il **primo** valore e non quello nuovo: l'obiettivo non si può più decidere. Riprodotto in test. Corretto validando la decisione prima di riprendere il grafo. In `plain` la classe non esiste: ogni richiesta è indipendente.
+
+Conclusione: **non adottato**. Su questo flusso il grafo avvolge le stesse tre funzioni e aggiunge un secondo stato (checkpoint accanto alla tabella `goals`, che resta la fonte per UI e briefing), il doppio delle dipendenze e una nuova classe di errore (G1). L'`interrupt` vale quando un flusso ha molti punti di pausa e rami; qui ne ha uno, e un `UPDATE` condizionato fa lo stesso lavoro. La funzione "Sposta / Non serve più" resta utile e si può portare su `dev` nella versione `plain`. Limiti: una sola esecuzione live, non conclusiva per F12; i checkpoint non vengono cancellati da "Azzera demo" (innocuo: gli ID degli obiettivi sono nuovi).
+

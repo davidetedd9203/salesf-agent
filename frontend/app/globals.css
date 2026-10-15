@@ -132,6 +132,8 @@ summary{cursor:pointer;font-size:14px;font-weight:600;color:var(--brand);padding
 .note p{font-size:14px;color:var(--ink);overflow-wrap:anywhere;margin-bottom:4px}
 .note small{font-size:12px;color:var(--muted)}
 .note.cited{border-left:3px solid var(--success);padding-left:10px}
+.goal-decision{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.goal-decision input{width:auto}
 .filter{font-size:13px;color:var(--weak);display:flex;gap:6px;align-items:center}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;background:var(--paper);padding:12px;border-radius:4px;max-height:440px;overflow:auto}
 

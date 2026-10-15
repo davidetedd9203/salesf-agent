@@ -324,6 +324,25 @@ class Store:
                        (status, next_check, nudges, json.dumps(check), timestamp(), gid, self.settings.owner_id))
             self.audit('goal_checked', {'goal_id': gid, 'status': status, 'next_check': next_check, **check}, db)
 
+    def check_decision(self, decision):
+        if decision.due_date and not 0 < (decision.due_date - self.today).days <= 90:
+            raise ValueError('La nuova data deve cadere tra domani e 90 giorni dalla data di riferimento')
+
+    def decide_goal(self, gid, decision):
+        """The rep answers a blocked or escalated goal: a new date restarts the follow-through, drop ends it."""
+        self.check_decision(decision)
+        due = decision.due_date
+        record = {'action': decision.action, 'by': 'rep', 'on': self.settings.reference_date, **({'due_date': due.isoformat()} if due else {})}
+        with self.connect() as db:
+            # ponytail: the goal moves, the CRM task keeps its date; editing the task is the rep's own CRM action.
+            changed = db.execute("UPDATE goals SET status=?, due_date=COALESCE(?, due_date), next_check=COALESCE(?, next_check), nudges=0, "
+                                 "last_check=?, updated_at=? WHERE id=? AND owner=? AND status IN ('blocked','escalated')",
+                                 ('open' if due else 'cancelled', due and due.isoformat(), due and due.isoformat(), json.dumps(record),
+                                  timestamp(), gid, self.settings.owner_id)).rowcount
+            if not changed:
+                raise ValueError('Obiettivo non in attesa di una tua decisione')
+            self.audit('goal_decided', {'goal_id': gid, **record}, db)
+
     def cancel_goal(self, gid):
         with self.connect() as db:
             changed = db.execute("UPDATE goals SET status='cancelled', updated_at=? WHERE id=? AND owner=? AND status IN ('open','escalated','blocked')",

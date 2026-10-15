@@ -120,9 +120,9 @@ async def openrouter_check(goal, context, settings, trace, transport=None):
     raise AgentError('Il controllo ha raggiunto il limite di round senza esito')
 
 
-async def check_goal(store, goal, transport=None):
+async def read_outcome(store, goal, transport=None):
+    """What happened, validated: the model's (or the script's) reading. Writes nothing but the audit of a failure."""
     context = store.context(goal['opportunity_id'])
-    today = store.today
     trace = []
     try:
         if store.settings.mode == 'demo':
@@ -140,7 +140,18 @@ async def check_goal(store, goal, transport=None):
         if isinstance(error, asyncio.TimeoutError):
             raise ProviderError('Controllo obiettivo scaduto per timeout.') from error
         raise AgentError('Esito del controllo non valido. Obiettivo invariato.') from error
+    return check, trace
+
+
+def apply_check(store, goal, check):
+    """The fixed server policy turns the reading into the next step and stores it."""
+    today = store.today
     status, next_check, nudges, action = policy(goal, check, today)
     record = {**check, 'action': action, 'by': 'agent', 'on': today.isoformat(), 'mode': store.settings.mode}
     store.update_goal(goal['id'], status, next_check, nudges, record)
-    return {'goal': {**goal, 'status': status, 'next_check': next_check, 'nudges': nudges, 'last_check': record}, 'trace': trace}
+    return {**goal, 'status': status, 'next_check': next_check, 'nudges': nudges, 'last_check': record}
+
+
+async def check_goal(store, goal, transport=None):
+    check, trace = await read_outcome(store, goal, transport)
+    return {'goal': apply_check(store, goal, check), 'trace': trace}
