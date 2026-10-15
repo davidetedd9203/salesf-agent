@@ -15,18 +15,28 @@ Apri **http://localhost:3000**, password iniziale **local-demo**. Mantieni `loca
 
 Il pacchetto Docker è incluso, ma la build dei container non è stata eseguita in questo ambiente. L'avvio locale, le API e la build frontend sono stati verificati; consulta `reports/VALIDATION.md`.
 
+## Demo online su Render (temporanea)
+
+Passi completi, verifiche e problemi frequenti in `docs/DEPLOY_RENDER.md`. `render.yaml` descrive due Web Service Docker: `sales-copilot-api` (backend) e `sales-copilot` (frontend). Su Render: **New → Blueprint**, collega il repository e inserisci i valori richiesti:
+
+- `OPENROUTER_API_KEY` e `OPENROUTER_MODEL` sul backend. Imposta prima un limite di spesa sulla chiave: chi conosce URL e password usa il tuo credito.
+- `APP_ORIGIN` sul backend: l'URL pubblico del frontend, per esempio `https://sales-copilot.onrender.com`.
+- `BACKEND_URL` sul frontend: l'URL pubblico del backend, per esempio `https://sales-copilot-api.onrender.com`. Entra nella build: se lo cambi, rifai il deploy del frontend.
+
+Se Render assegna URL diversi da quelli inseriti, correggi le due variabili e rifai il deploy di entrambi i servizi. La password è generata da Render (`DEMO_PASSWORD` nella dashboard del backend): `local-demo` non va usata su un URL pubblico.
+
+Limiti del piano gratuito: il servizio si sospende dopo 15 minuti di inattività e al riavvio il database SQLite riparte dalla fixture. Apri l'app qualche minuto prima del panel, così il briefing del modello reale è pronto. Il briefing gira in asyncio: Temporal resta una dimostrazione locale (`ORCHESTRATOR=temporal`). Spegni i servizi dopo il colloquio.
+
 ## Avvio locale
 
-Richiede **Python 3.12+** e **Node.js 22+**. Due terminali, entrambi dalla cartella del progetto.
+Richiede **[uv](https://docs.astral.sh/uv/)** (Python 3.12+) e **Node.js 22+**. Due terminali, entrambi dalla cartella del progetto.
 
 Terminale backend:
 
 ```bash
 cp .env.example .env
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-uvicorn backend.main:app --host 127.0.0.1 --port 8000
+uv sync
+uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
 Terminale frontend:
@@ -37,7 +47,7 @@ npm ci
 npm run dev
 ```
 
-Apri http://localhost:3000. Su Windows usa `python` e `.venv\Scripts\Activate.ps1` al posto dei comandi Unix. FastAPI espone la documentazione API a http://127.0.0.1:8000/docs; le operazioni richiedono la sessione e le POST l'header Origin corretto. L'interfaccia proxy inoltra cookie e chiamate API sullo stesso dominio.
+Apri http://localhost:3000. FastAPI espone la documentazione API a http://127.0.0.1:8000/docs; le operazioni richiedono la sessione e le POST l'header Origin corretto. L'interfaccia proxy inoltra cookie e chiamate API sullo stesso dominio.
 
 ## Passare al modello reale
 
@@ -62,6 +72,20 @@ Il valore di esempio in `.env.example` è configurabile: verifica disponibilità
 5. **Orion Manufacturing**: stakeholder in conflitto → domanda di chiarimento, nessun pulsante di creazione.
 6. **Helios Retail**: istruzioni malevole in una nota → ignorarle; richiesta commerciale senza data precisa, nessuna Task.
 7. Apri **Task** e **Registro evidenze** per mostrare persistenza, tool e approvazione.
+8. **Proattività.** All'avvio il server prepara da solo il **Briefing del mattino** del 12/10, senza clic: cinque analisi, e su Northstar l'agente si programma un ricontrollo al 5/11. Imposta l'orologio demo al **2026-11-05** e premi **Sposta orologio demo**: il briefing della nuova data parte da solo, comincia dal ricontrollo, trova la nota del 4/11 e propone la demo entro il 12/11. Acme e BluePeak diventano chiarimenti perché le scadenze sono passate.
+
+**Obiettivi (follow-through).** Ogni Task approvata apre un obiettivo, per esempio "la demo tecnica si è svolta". Dalla scadenza in poi il briefing lo controlla.
+- Il modello legge le note nuove e dice se è raggiunto, in corso o bloccato. Per "raggiunto" serve una prova scritta dopo l'apertura dell'obiettivo.
+- Il server decide il passo successivo: attesa, un promemoria, poi escalation verso il venditore.
+- Solo il venditore chiude le Task (`Segna completata`).
+
+Per provarlo: approva Acme e BluePeak, poi sposta l'orologio al 14/10 (promemoria su BluePeak) e al 17/10 (Acme raggiunto, BluePeak bloccato). Le note di esito sono in `data/notes_v4.csv`.
+
+**Pipeline o agente? (sperimentale).** `AGENT_STRATEGY` sceglie tra `fixed` (default, tre letture per fasi), `search` (il modello cerca e sceglie cosa leggere tra note, email, trascrizioni e contatti) e `pipeline` (una chiamata con tutto il contesto). `ACCOUNT_NOISE=10|50|200` aggiunge le note di rumore della fixture v3 ai cinque casi etichettati: usa un database nuovo quando lo cambi. Le citazioni sono valide solo se la nota è stata restituita al modello. Su Orion il chiarimento indica chi può decidere (`ask_contact`), scelto tra i contatti letti. Confronto: `uv run python -m backend.evaluate --suite scaling --mode openrouter --output reports/live-scaling.json`.
+
+**Orchestrazione durevole (opzionale).** Di default il briefing gira in un ciclo asyncio nel processo. Con `ORCHESTRATOR=temporal` diventa un workflow Temporal: le analisi già completate non si ripetono dopo un crash, si ritentano solo gli errori transitori del provider, e un ID di workflow per data impedisce doppie esecuzioni. Serve un server Temporal: `temporal server start-dev` (Temporal CLI) su `localhost:7233`. Il worker gira nel backend; `uv run python -m backend.workflows` lo avvia separato. Se il server non risponde, il backend non parte: nessun ripiego silenzioso. Motivazione e misura in `docs/DECISION_LOG.md`, T1.
+
+Il briefing non crea Task: le proposte si approvano come sempre. I ricontrolli sono memoria dell'agente, non record CRM, e si annullano dalla UI. `BRIEFING_AUTO=false` disattiva l'avvio automatico; in modalità `openrouter` ogni briefing costa fino a cinque analisi.
 
 I suggerimenti richiedono un'azione supportata e una deadline esplicita. I due tipi ammessi sono `schedule_demo` e `prepare_security_response`. L'LLM non può generare una Task arbitraria o scegliere destinatari; il titolo è costruito dal server. Un'azione fuori perimetro produce astensione o chiarimento. Non è un assistente commerciale generalista.
 
@@ -87,15 +111,18 @@ Regole candidate: inattività ≥14 giorni, nessuna Task pendente, oppure close 
 ## Test ed evaluation
 
 ```bash
-pytest -q
-python -m backend.evaluate --mode demo --output reports/evaluation-demo.json
-python -m backend.evaluate --suite chat --mode demo --output reports/evaluation-chat-demo.json
-python -m backend.evaluate --mode openrouter --output reports/live-evaluation.json   # oppure OPENROUTER_MODEL=<id> davanti al comando
+uv run pytest -q
+uv run python -m backend.evaluate --mode demo --output reports/evaluation-demo.json
+uv run python -m backend.evaluate --suite chat --mode demo --output reports/evaluation-chat-demo.json
+uv run python -m backend.evaluate --suite proactive --mode demo --output reports/evaluation-proactive-demo.json
+uv run python -m backend.evaluate --suite goals --mode demo --output reports/evaluation-goals-demo.json
+uv run python -m backend.evaluate --suite scaling --mode demo --output reports/evaluation-scaling-demo.json   # protocollo; il confronto vale solo con --mode openrouter
+uv run python -m backend.evaluate --mode openrouter --output reports/live-evaluation.json   # oppure OPENROUTER_MODEL=<id> davanti al comando
 cd frontend
 npm run build
 ```
 
-I test mockano OpenRouter per verificare il protocollo, budget, autorizzazioni e gestione degli errori; non verificano il comportamento semantico di Claude. Le cinque etichette vengono lette solo dal runner esterno `evaluate.py`, mai dal codice di indagine. Il report salva decisioni, citazioni, tool, uso token riportato dal provider ed errori. Le verifiche non creano Task e usano database temporanei.
+`tests/test_temporal.py` avvia un server Temporal locale tramite l'SDK (scaricato al primo uso). I test mockano OpenRouter per verificare il protocollo, budget, autorizzazioni e gestione degli errori; non verificano il comportamento semantico di Claude. Le cinque etichette vengono lette solo dal runner esterno `evaluate.py`, mai dal codice di indagine. Il report salva decisioni, citazioni, tool, uso token riportato dal provider ed errori. Le verifiche non creano Task e usano database temporanei.
 
 Il comparatore baseline propone un follow-up per ogni candidato: è deliberatamente semplice, non un prodotto competitivo. Le metriche sono decision exact match, copertura degli ID di evidenza attesi, selezione dei casi etichettati e conteggio Task senza approvazione. La copertura degli ID non misura supporto semantico: serve revisione umana. Nessuna valutazione degli altri 15 record è possibile senza etichettarli.
 
@@ -113,12 +140,14 @@ Questa è una demo locale, non un servizio pronto per essere esposto in rete. L'
 
 ## Reset della demo
 
-Ferma i processi. Per avvio locale elimina **solo** `var/crm.sqlite3`; al riavvio viene reimportato il dataset. Se hai impostato `DB_PATH`, usa quel file. Con Docker `docker compose down -v` elimina il volume e tutte le Task della demo: eseguilo solo quando vuoi azzerarle. Non modificare i CSV aspettandoti aggiornamenti automatici del database già creato.
+Dal frontend: **Azzera demo** sotto l'orologio, poi conferma. Funziona anche su Render. Cancella Task, proposte, analisi, obiettivi, ricontrolli, briefing e registro, riporta l'orologio alla data della fixture e rigenera il briefing (in modalità live costa una nuova serie di chiamate al modello). La sessione resta attiva. Con Temporal ogni reset usa un nuovo ID di workflow per la stessa data; attendi la fine di un briefing in corso prima di azzerare.
+
+Da terminale: ferma i processi. Per avvio locale elimina **solo** `var/crm.sqlite3`; al riavvio viene reimportato il dataset. Se hai impostato `DB_PATH`, usa quel file. Con Docker `docker compose down -v` elimina il volume e tutte le Task della demo: eseguilo solo quando vuoi azzerarle. Non modificare i CSV aspettandoti aggiornamenti automatici del database già creato.
 
 ## File principali
 
 - `frontend/`: UI Next.js, package lock e proxy API.
-- `backend/`: API, tool loop, persistenza, schema ed evaluation.
+- `backend/`: API, tool loop, briefing proattivo (`briefing.py`, workflow Temporal opzionale in `workflows.py`), persistenza, schema ed evaluation.
 - `data/`: dataset originale, ground truth separata e generatore originale.
 - `tests/`: controlli di protocollo e guardrail.
 - `docs/PANEL_WALKTHROUGH.md`: sceneggiatura e domande del panel.

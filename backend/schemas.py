@@ -25,6 +25,8 @@ class Decision(StrictModel):
     evidence: list[Evidence] = Field(min_length=1, max_length=5)
     task: TaskDraft | None
     question: str | None = Field(max_length=300)
+    revisit_on: date | None = Field(default=None, description='Only for no_action caused by an agreed waiting period: '
+                                    'the explicit end date quoted in evidence, when you will re-investigate. Otherwise null.')
 
     @model_validator(mode='after')
     def coherent(self):
@@ -32,6 +34,37 @@ class Decision(StrictModel):
             raise ValueError('Only recommendations may have a task, and must have one')
         if (self.decision == 'clarify') != bool(self.question):
             raise ValueError('Only clarify decisions must contain a question')
+        if self.revisit_on and self.decision != 'no_action':
+            raise ValueError('Only no_action decisions may schedule a revisit')
+        return self
+
+
+class AccountDecision(Decision):
+    """search and pipeline strategies: a clarification can name who resolves it, chosen among contacts actually read."""
+    ask_contact_id: str | None = Field(default=None, max_length=80, description='Only for clarify: contact_id from get_contacts '
+                                       'of the person who can resolve the conflict, based on evidence. Otherwise null.')
+
+    @model_validator(mode='after')
+    def contact_only_for_clarify(self):
+        if self.ask_contact_id and self.decision != 'clarify':
+            raise ValueError('Only clarify decisions may name a contact')
+        return self
+
+
+
+class GoalCheck(StrictModel):
+    """What happened to an approved task's goal. The model reads; the server decides the next action."""
+    outcome: Literal['achieved', 'pending', 'blocked']
+    reason: str = Field(min_length=10, max_length=600)
+    evidence: list[Evidence] = Field(max_length=3)
+    question: str | None = Field(max_length=300, description='Only for blocked: the decision the rep has to make. Otherwise null.')
+
+    @model_validator(mode='after')
+    def coherent(self):
+        if self.outcome != 'pending' and not self.evidence:
+            raise ValueError('achieved and blocked need evidence')
+        if (self.outcome == 'blocked') != bool(self.question):
+            raise ValueError('Only blocked outcomes must contain a question')
         return self
 
 
@@ -39,7 +72,15 @@ class ListQuery(StrictModel):
     sort: Literal['priority', 'amount', 'close_date']
     stage: Literal['Discovery', 'Qualification', 'Proposal', 'Negotiation'] | None = None
     only_candidates: bool = False
+    account: str | None = Field(default=None, min_length=2, max_length=80, description='Case-insensitive part of the account name, e.g. "helios".')
     limit: int = Field(default=5, ge=1, le=10)
+
+
+class ChatTask(StrictModel):
+    """A task the rep asked for in their own words. Only a proposal: the rep's click creates it."""
+    opportunity_id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=3, max_length=120, pattern=r'^[^\r\n]+$', description="The user's task in Italian, in their words.")
+    due_date: date
 
 
 class ChatReply(StrictModel):
@@ -64,6 +105,10 @@ class ChatRequest(StrictModel):
 
 class AnalysisRequest(StrictModel):
     opportunity_ids: list[str] = Field(min_length=1, max_length=5)
+
+
+class ClockRequest(StrictModel):
+    reference_date: date
 
 
 class ApprovalRequest(StrictModel):

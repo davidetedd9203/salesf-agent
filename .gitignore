@@ -7,3 +7,7 @@ __pycache__/
 .pytest_cache/
 reports/live*.json
 *.log
+
+# Panel material: local only (recruiter brief, branded deck)
+presentation/
+tmp/

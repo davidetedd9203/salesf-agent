@@ -24,7 +24,27 @@
 | Pulsante "Analizza le prime 5" (12/10/2026) | Rimosso: lo sostituisce la chat. Resta "Analizza questa opportunità" nel dettaglio | Tenere entrambi | Ridondante con la chat; il pulsante nel dettaglio resta come strumento preciso e funziona anche se la chat sbaglia. |
 | "Priorità" (12/10/2026) | Ordinamento deterministico lato server: azioni analizzate ad alta priorità, poi chiarimenti, poi record non analizzati per numero di segnali, poi `no_action`; a parità, chiusura più vicina | Lasciare che il modello decida cosa significa "priorità" | Non esiste un campo priorità: senza una definizione fissa il criterio cambierebbe a ogni domanda. |
 | Rifiuti nella chat (12/10/2026) | Una richiesta fuori perimetro non restituisce ID | Rifiutare l'azione ma mostrare il record citato | Deciso dopo l'osservazione C3, prima della rimisura: risposta più prevedibile e testabile. Da validare con un venditore: mostrare la card potrebbe essere utile. |
+| Saluti e rifiuti senza query (14/10/2026) | Al primo round `reply` è offerto con `opportunity_ids` vuoto (`maxItems: 0`); con ID solo dopo `list_opportunities` | Solo `list_opportunities` al primo round | Osservato dall'utente: a “Ciao” la chat eseguiva sempre una query inutile. Le fasi restano strutturali: prima della lista citare un ID è un errore di schema. Misurato solo in demo e con test: va rieseguita `--suite chat` live (ora 7 casi, incluso “Ciao”). |
+| Task chiesta in chat (14/10/2026) | Tool `create_task` della chat, offerto solo dopo `list_opportunities`: titolo in testo libero dalle parole del venditore (massimo 120 caratteri, una riga), scadenza esplicita non passata, opportunità restituita dalla query. Crea solo una proposta (snapshot, scadenza, Task aperta già esistente → rifiuto); la Task nasce col clic su “Crea Task” attraverso lo stesso endpoint di approvazione. Se manca azienda, cosa o quando, l'agente chiede | Chat solo in lettura (C3); titoli solo dalla allowlist | Richiesto dall'utente, testo libero compreso. Supera la regola “Due tipi in allowlist” solo per la chat: il titolo lo scrive il venditore, non il modello dalle note (la chat non legge note). Costi accettati: nessuna citazione (la card dice “richiesta da te in chat”) e nessun obiettivo di follow-through, perché il server non ha un obiettivo da verificare. Misurato solo in demo e con test: `--suite chat` live ora ha 6 casi di Task (valida, dati mancanti, iniezione, Task esistente, richiesta mista con email, data passata). |
+| Razionale nella chat (14/10/2026) | Campo `reason` obbligatorio (max 200 caratteri) nella chiamata `list_opportunities`, mostrato nei passaggi e rimosso prima della query | Mostrare il ragionamento del provider | Richiesto dall'utente. È una frase scritta per il venditore e registrata come argomento del tool, non chain-of-thought (invariante 10); non cambia i risultati. |
 | Streaming (12/10/2026) | Nessuno nella v1: risposta JSON unica | SSE | Le risposte arrivano in pochi secondi; lo streaming si aggiunge se la latenza percepita diventa un problema misurato. |
+| Proattività (13/10/2026) | Briefing del mattino avviato dal server una volta per data, più ricontrolli che l'agente si programma da solo | Agente che agisce da solo; nessuna proattività | Proattività (chi avvia il lavoro) e autonomia (chi approva) sono assi separati: si aumenta la prima, la seconda resta umana. Nessuna nuova scrittura sul CRM. |
+| Selezione del briefing (13/10/2026) | Deterministica: prima i ricontrolli scaduti, poi le candidate per chiusura più vicina, massimo 5; esclusi i record con un ricontrollo futuro | LLM che sceglie quali trattative analizzare | Costo prevedibile e criterio ispezionabile; le regole hanno recall 5/5 sui casi etichettati. L'agentività sta nel ricontrollo deciso dal modello, non nel triage. |
+| Riepilogo del briefing (13/10/2026) | Composto dal server dalle decisioni validate | Una chiamata LLM in più che riassume | Ogni frase del briefing viene da una decisione già validata con citazioni; un riassunto libero reintrodurrebbe testo non verificato. |
+| Ricontrollo (`revisit_on`) (13/10/2026) | Campo opzionale di `submit_decision`, solo con `no_action`, data citata alla lettera nelle evidenze, tra domani e 90 giorni | Promemoria scritto come Task nel CRM; data calcolata dal server | È memoria dell'agente, non un record CRM: visibile e annullabile, non crea Task. Stessa validazione delle scadenze, quindi niente date inventate. |
+| Orologio demo (13/10/2026) | Data fissa di default; il presentatore la sposta esplicitamente (entro 120 giorni). Le note sono visibili solo dalla loro `created_at` | Orologio reale | Riproducibilità mantenuta; il tempo che passa diventa un input dichiarato e registrato in audit. |
+| Nota versionata (13/10/2026) | `data/notes_v2.csv`: NOTE-002-4 del 4/11, data nel testo coerente con `created_at` | Modificare `notes.csv` | Le fixture originali restano intatte; al 12/10 il contesto, e quindi lo snapshot, è identico a prima. |
+| Validità delle proposte del briefing (13/10/2026) | 12 ore invece di 30 minuti; all'approvazione si rifiuta una Task con scadenza già passata rispetto all'orologio | Stessa TTL di 30 minuti | Un briefing preparato all'alba sarebbe scaduto prima che il venditore lo apra. Lo snapshot resta la vera protezione. |
+| Orchestrazione del briefing (13/10/2026) | Temporal **opzionale** (`ORCHESTRATOR=temporal`): ogni analisi è un'activity, ID di workflow per owner e data, retry solo per errori transitori del provider. Default asyncio | Temporal obbligatorio; LangGraph; Celery/RQ | Introdotto dopo il fallimento misurato T1. Temporal risolve proprio quel limite (progresso durevole, idempotenza tra worker, retry selettivi). LangGraph serve a orchestrare il ragionamento, che qui resta tre letture e una decisione. Una coda semplice non conserva il progresso del batch. Opzionale perché la demo non deve dipendere da un servizio in più. |
+| Quando serve un agente (13/10/2026) | Tre strategie sugli stessi dati e con lo stesso validatore: `fixed` (default), `search` (il modello sceglie cosa leggere), `pipeline` (una chiamata con tutto) | Dichiarare che serve un agente | Regola: se i passi si possono scrivere prima di leggere i dati, è una pipeline. Con tre note lo sono; con centinaia di note e contatti il passo successivo dipende dall'ultimo letto. Decide la misura, non l'architettura. |
+| Contesto ampio (13/10/2026) | Fixture v3 generata con seed: fino a 200 note di rumore per caso (note, email, trascrizioni), distrattori con date passate, una seconda iniezione per Helios. Opt-in con `ACCOUNT_NOISE` | Modificare le fixture originali; generare dati con un LLM | Riproducibile e versionata; con `ACCOUNT_NOISE=0` il comportamento e lo snapshot restano identici. Le date nel testo coincidono con `created_at`. |
+| Ricerca (13/10/2026) | Ricerca per parole chiave deterministica, al massimo 5 risultati, budget di 14 chiamate | Database vettoriale, embedding | Fino a 200 note brevi per caso: un indice vettoriale non è giustificato da una limitazione misurata. Da rivalutare se la ricerca per parole chiave risulta il collo di bottiglia nell'evaluation live. |
+| Citazioni (13/10/2026) | Si citano solo note restituite al modello (`search_notes`/`get_note`), non tutte quelle esistenti | Basta che la nota esista | Con la ricerca il modello potrebbe "indovinare" un ID esistente mai letto: la citazione non sarebbe un'evidenza. |
+| Contatto da interpellare (13/10/2026) | `ask_contact_id` solo con `clarify`, solo tra i contatti restituiti da `get_contacts`; nome e ruolo scritti dal server; nessuna email esposta al modello | Il modello scrive il destinatario | Indagine condizionale verificabile: il conflitto su Orion porta a cercare chi decide. Minimizzazione dei dati: il modello non ha strumenti di invio, quindi non gli servono gli indirizzi. |
+| Follow-through (13/10/2026) | Ogni Task approvata apre un obiettivo. Il modello legge l'esito (raggiunto, in corso, bloccato); una policy fissa del server decide: attesa fino alla scadenza, un promemoria dopo, poi escalation al venditore | Il modello decide anche l'azione successiva; promemoria automatici a ripetizione | Il modello interpreta, il server decide: la policy è ispezionabile e testabile e il rumore è limitato a un promemoria. "Escalation" significa una decisione nel briefing del venditore: nessun messaggio, nessun manager notificato. |
+| Prova dell'esito (13/10/2026) | "Raggiunto" e "bloccato" richiedono una citazione esatta da una nota scritta dalla data di apertura dell'obiettivo in poi | Basta una citazione esistente | La nota della richiesta originale ("demo by 16 Oct") non può provare che la demo sia avvenuta. |
+| Chi chiude la Task (13/10/2026) | Solo il venditore (`Segna completata`), che chiude anche l'obiettivo. Un obiettivo raggiunto suggerisce di farlo, non lo fa | L'agente aggiorna il CRM quando vede la prova | Nessuna nuova scrittura sul CRM fuori dall'approvazione umana. |
+| Dove vive lo stato degli obiettivi (13/10/2026) | Tabella `goals`; i controlli girano nel briefing, quindi con Temporal sono activity durevoli | Un workflow Temporal per obiettivo con timer durevoli | Con l'orologio demo un timer reale non si può mostrare; uno stato duplicato tra database e workflow si disallinea. Stessa scelta fatta per i ricontrolli. In produzione, con date reali, un workflow per obiettivo diventa ragionevole. |
 | Lingua (12/10/2026) | UI, errori, titoli Task e razionale in italiano; prompt di sistema e note restano in inglese | Tradurre le note del dataset | Le citazioni devono essere sottostringhe esatte delle note originali; le fixture non si modificano. |
 
 ## Osservato durante la costruzione
@@ -68,6 +88,7 @@ Suite `python -m backend.evaluate --suite chat`: sei domande, tre con ordinament
 | C2 | Il modello riscriveva l'elenco nel testo: 1.400 token di output esauriti, JSON troncato; al tentativo successivo 801 caratteri contro un limite di 800. | Rifiutato due volte, errore visibile. | Prompt e schema: massimo 600 caratteri, niente elenco nel testo (la UI mostra le card). |
 | C3 | A “crea una Task per Helios” e “manda un'email ad Acme” rifiutava l'azione ma proponeva comunque la card del record. | Comportamento non specificato; l'etichetta prevedeva nessun ID. | Regola esplicita: i rifiuti non restituiscono ID (vedi decisioni). |
 | C4 | Dopo le correzioni, su “opportunità del collega AE-002”, il primo round ha esaurito 1.400 token senza nessuna tool call (`finish_reason: length`). | Fallimento chiuso, errore mostrato in chat. | Non corretto: osservazione singola. Opzioni se si ripete: più token di output o ragionamento disattivato per il router. |
+| C5 (14/10/2026) | Prima prova live di `create_task` (Nimbus, OPP-008): due chiamate senza `title`, rifiutate dallo schema, chat fallita. Causa nostra, non del modello: `inline_refs` eliminava ogni chiave `title`, compresa la proprietà del tool, quindi il campo era richiesto ma invisibile. | Fallimento chiuso, nessuna proposta, nessuna Task. | Ora si eliminano solo le annotazioni `title` testuali di Pydantic; un test verifica che ogni campo richiesto sia presente nelle proprietà. |
 
 Esiti: esecuzione 1 → 3/6; esecuzioni 2–3, con correzione singola e tracce → 5/6 e 3/6; esecuzioni 4–5, con tool per fasi e regole su lunghezza e rifiuti → **6/6 e 5/6**. Costo circa $0.012 per suite completa. Valore e data di chiusura sono stati ordinati correttamente in tutte le esecuzioni: gli errori riguardano il protocollo e i rifiuti, non l'interpretazione della domanda.
 
@@ -99,8 +120,71 @@ Principio: ogni componente si aggiunge quando una limitazione misurata lo giusti
 | 1. Affidabilità del modello | Tasso di output malformati > 0 su un set più ampio (oggi 0/10 con GLM dopo F8–F10) | Structured outputs nativi (`response_format` JSON Schema strict) oppure SDK del provider (Anthropic tool use con `strict`) al posto della validazione a valle | Elimina la classe F5 alla fonte; Pydantic resta come secondo controllo. |
 | 2. Evaluation | Più di ~20 casi o più modelli da confrontare | `pytest` parametrizzato sui casi + un harness come promptfoo o Inspect AI; tracciamento con Langfuse/OpenTelemetry | Riproducibilità, confronto tra modelli, revisione umana delle citazioni. |
 | 3. Pipeline fissa vs agente | L'agente non batte un'estrazione a passo fisso a parità di dataset | Tenere la pipeline fissa (una chiamata con tutto il contesto) | Le tre letture sono sempre obbligatorie: oggi l'autonomia è minima. |
-| 4. Workflow durevole | Analisi in batch lunghe, ripresa dopo crash, approvazioni asincrone | LangGraph (checkpoint, interrupt human-in-the-loop) o una coda (Celery/RQ, Temporal) | Solo con stato persistente reale da gestire; oggi basta il loop Python. |
+| 4. Workflow durevole | Analisi in batch lunghe, ripresa dopo crash, approvazioni asincrone | **Fatto per il briefing (T1)**: Temporal opzionale. Prossimo passo: Temporal Schedule alle 07:00 per utente al posto del ciclo nel processo; ricontrolli come timer durevoli | Il crash a metà briefing è stato riprodotto e misurato; le singole analisi manuali restano nel loop Python. |
 | 5. Salesforce | Utilità validata con un venditore | Sandbox via REST API con OAuth 2.0 (JWT bearer), permessi mappati all'utente, Task via API con controllo di concorrenza su `LastModifiedDate` (header condizionale `If-Unmodified-Since`); valutare Agentforce + Einstein Trust Layer se il cliente è già su quella piattaforma | Identità e permessi reali sostituiscono `AE-001` e lo snapshot locale. |
 | 6. Scala | Più utenti concorrenti | Postgres, sessioni e rate limit in Redis, worker multipli | Le sessioni in memoria sono il limite noto attuale. |
 
 Non consigliati senza misura: multi-agente, database vettoriale (tre note per opportunità stanno nel contesto), invio automatico di email.
+
+## Proattività — 13/10/2026
+
+Briefing del mattino e ricontrolli programmati dall'agente. Suite `python -m backend.evaluate --suite proactive`: due mattine (12/10 e 5/11). Al 12/10 Northstar deve risultare `no_action` con ricontrollo al 5/11; spostato l'orologio, il briefing del 5/11 deve partire da quel ricontrollo, trovare la nota nuova e proporre la demo entro il 12/11, senza Task con scadenze passate e senza Task create.
+
+Demo: 6/6 controlli, **simulazione scriptata, non un benchmark**. Il modello reale non è ancora stato misurato su questa suite né sulle analisi dopo le nuove regole del prompt (`revisit_on`, scadenze passate): va rieseguita l'evaluation live prima di dichiarare che il 5/5 regge.
+
+Osservato in demo al 5/11: Acme e BluePeak diventano `clarify` perché le scadenze del 16/10 e del 13/10 sono passate senza Task. È il comportamento voluto, ma mostra un limite: senza un flusso di completamento delle Task, il briefing non sa se il venditore ha agito fuori dal sistema.
+
+Rischi nuovi, non ancora misurati: fatica da notifiche (metrica proposta: quota di voci del briefing su cui il venditore agisce); costo di esecuzioni non richieste (limitato a 5 analisi per data, `BRIEFING_AUTO=false` per spegnerlo); un ricontrollo proposto dal modello su un'attesa inesistente (mitigato dalla data citata alla lettera, non escluso).
+
+## Orchestrazione durevole — 13/10/2026
+
+| # | Cosa è successo | Risposta del sistema | Azione |
+|---|---|---|---|
+| T1 | Riprodotto in test (`tests/test_temporal.py`): un errore non gestito durante la terza analisi del briefing con il ciclo asyncio. Al riavvio il briefing riparte da zero: **Acme analizzata due volte**, quindi pagata due volte in modalità live. Effetto non previsto: il ricontrollo di Northstar, salvato prima del crash, la esclude dal briefing rifatto, che **perde Northstar in silenzio**. | Nessun briefing salvato dopo il crash, nessuna Task creata. Il secondo effetto però non è visibile all'utente. | Temporal opzionale: ogni analisi è un'activity. Stesso scenario: 5 analisi esattamente una volta, solo il passo fallito ritentato, Northstar presente. |
+| T2 | 14/10/2026, crash reale con `glm-5.3`: backend terminato con `taskkill /F` dopo 2 analisi su 5 del briefing. Senza heartbeat l'analisi in corso al momento del crash sarebbe ripartita solo allo scadere del timeout di 120 secondi. | Dopo il riavvio il workflow riprende: 5 analisi registrate una volta ciascuna, 1 briefing salvato. Due round del modello hanno impiegato oltre 60 secondi, per latenza del provider. | Heartbeat ogni 2 secondi, timeout 10 secondi: l'analisi interrotta riparte come tentativo 2, due secondi dopo il riavvio. È l'unica analisi pagata due volte. |
+
+Cosa imponiamo con Temporal, verificato con un server Temporal locale nei test:
+- un secondo avvio per la stessa data riusa lo stesso workflow (`briefing-AE-001-<data>`);
+- un errore transitorio del provider (rete, 429, 5xx, timeout) viene ritentato fino a 3 volte;
+- un errore di validazione (citazione inventata, schema) diventa un risultato mostrato all'utente e non viene mai ritentato. Un retry pagherebbe di nuovo il modello senza cambiare le regole: per quel caso c'è già la correzione singola nel loop;
+- a retry esauriti il workflow fallisce in modo visibile, senza salvare un briefing parziale come se fosse completo;
+- se il server Temporal non è raggiungibile l'avvio si ferma con errore: nessun ripiego silenzioso su asyncio.
+
+Limiti ancora aperti:
+- Con Temporal il lock in memoria non copre le analisi del worker: un'analisi manuale e una del briefing possono chiamare il modello in parallelo.
+- Il trigger resta il ciclo nel processo, perché l'orologio demo è finto. In produzione andrebbe un Temporal Schedule.
+- I ricontrolli restano nel database e non sono timer durevoli. È una scelta: una sola fonte di verità, annullabile dalla UI e leggibile in SQL.
+- Il crash simulato è un'eccezione nell'activity, non un processo ucciso. Il caso di un worker ucciso si affida al timeout dell'activity, documentato da Temporal ma non provato qui.
+
+## Quando serve un agente — 13/10/2026
+
+Fasi 1 e 2 della roadmap "agente necessario". Il modo per misurarlo è `python -m backend.evaluate --suite scaling --mode openrouter`: stessi cinque casi etichettati con 10, 50 e 200 note di rumore, confrontando `pipeline` e `search`. Per ogni combinazione registra:
+- decisioni corrette;
+- contatto corretto su Orion (etichetta solo nel runner);
+- copertura delle evidenze;
+- token, latenza, letture ed errori.
+
+Demo: 5/5 e contatto corretto per entrambe le strategie a ogni dimensione. È atteso e **non dice nulla**: in demo entrambe sono simulate sulle fixture. Il confronto reale non è ancora stato eseguito. Non dichiarare un vincitore prima di averlo eseguito con un modello fissato e registrato qui i fallimenti osservati.
+
+Ipotesi da verificare, senza conclusioni anticipate:
+- la pipeline potrebbe reggere anche a 200 note, perché i modelli recenti hanno contesti ampi; in quel caso l'agente costa di più senza guadagnare accuratezza e si tiene la pipeline;
+- l'agente potrebbe perdere la nota giusta se le parole chiave non coincidono;
+- il contatto giusto richiede di collegare la nota del CFO al conflitto: è il caso in cui l'indagine condizionale dovrebbe pagare.
+
+## Follow-through degli obiettivi — 13/10/2026
+
+Suite `python -m backend.evaluate --suite goals`. Il runner approva le Task proposte, al posto del venditore, poi segue tre mattine:
+- **12/10:** due obiettivi aperti, Acme e BluePeak.
+- **14/10:** BluePeak è scaduto senza esito, quindi `pending` e un promemoria; Acme non è ancora dovuto.
+- **17/10:** Acme risulta raggiunto con la prova della nota v4 del 17/10; BluePeak risulta bloccato dalla nota del 15/10 (revisione di sicurezza spostata a gennaio), con una domanda per il venditore.
+
+Esiti:
+- demo: 6/6 controlli, simulati sulle fixture;
+- modello reale: non ancora misurato.
+
+L'escalation dopo un secondo controllo senza esito è coperta solo da un test unitario: nessuna fixture la produce.
+
+Limiti noti:
+- la policy è uguale per tutti i tipi di obiettivo;
+- un obiettivo raggiunto non chiude la Task e resta al venditore farlo: è voluto, ma è un passaggio in più;
+- se nessuno legge il briefing, l'escalation non va da nessuna parte. Serve un canale e va misurato il rischio di fatica da notifiche.

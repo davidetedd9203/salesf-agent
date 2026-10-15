@@ -1,14 +1,17 @@
 import asyncio
+import json
 import secrets
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from .agent import AgentError, analyze
+from .briefing import run_briefing, workflow_id
 from .chat import chat
 from .config import Settings
-from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, LoginRequest
+from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, ClockRequest, LoginRequest
 from .store import Store
 
 
@@ -19,10 +22,53 @@ def create_app(settings=None):
     login_attempts = {}
     analysis_lock = asyncio.Lock()
     last_analysis = [0.0]
+    background = set()
+    temporal = {}
+    if settings.orchestrator not in ('asyncio', 'temporal'):
+        raise ValueError('ORCHESTRATOR deve essere asyncio oppure temporal')
+
+    async def ensure_briefing(trigger):
+        """Proactive trigger: runs without a user request, once per demo date, under the shared model lock."""
+        live_ready = store.settings.mode == 'demo' or bool(settings.api_key and settings.model)
+        if not settings.briefing_auto or not live_ready or store.briefing(store.settings.reference_date):
+            return
+        if settings.orchestrator == 'temporal':
+            # The workflow ID per owner and date replaces the in-process lock as the guard against double runs.
+            from .workflows import start_briefing
+            await start_briefing(temporal['client'], settings, store.settings.reference_date, trigger, store.reset_stamp())
+            return
+        if analysis_lock.locked():
+            return
+        async with analysis_lock:
+            try:
+                await run_briefing(store, trigger)
+            except Exception as error:  # Visible in the audit; the next tick retries.
+                store.audit('briefing_failed', {'briefing_date': store.settings.reference_date, 'error': str(error)[:300]})
+
+    async def morning_loop():
+        # Production: a cron at 07:00 per user. Here the demo date only changes when the presenter moves the clock.
+        while True:
+            await ensure_briefing('scheduler')
+            await asyncio.sleep(60)
+
+    def spawn(coroutine):
+        task = asyncio.create_task(coroutine)
+        background.add(task)
+        task.add_done_callback(background.discard)
 
     @asynccontextmanager
     async def lifespan(app):
+        if settings.orchestrator == 'temporal':
+            from temporalio.client import Client
+            from .workflows import briefing_worker
+            # No silent fallback to asyncio: an unreachable Temporal server stops startup with a visible error.
+            temporal['client'] = await Client.connect(settings.temporal_address)
+            spawn(briefing_worker(temporal['client'], settings).run())  # In-process for the demo; `python -m backend.workflows` runs it separately.
+        if settings.briefing_auto:
+            spawn(morning_loop())
         yield
+        for task in list(background):
+            task.cancel()
 
     app = FastAPI(title='Sales Copilot — demo locale per colloquio', lifespan=lifespan)
     app.state.store = store
@@ -78,8 +124,70 @@ def create_app(settings=None):
 
     @app.get('/api/config', dependencies=[Depends(authorized)])
     def configuration():
-        return {'mode': settings.mode, 'model': settings.model or None, 'reference_date': settings.reference_date,
+        return {'mode': settings.mode, 'model': settings.model or None, 'reference_date': store.settings.reference_date,
+                'base_date': store.base_date.isoformat(), 'briefing_auto': settings.briefing_auto, 'orchestrator': settings.orchestrator,
                 'owner_id': settings.owner_id, 'ready': settings.mode == 'demo' or bool(settings.api_key and settings.model)}
+
+    @app.post('/api/clock', dependencies=[Depends(authorized)])
+    async def clock(body: ClockRequest):
+        if analysis_lock.locked():
+            raise HTTPException(429, "Un'analisi è in corso: attendi prima di spostare l'orologio")
+        try:
+            store.set_clock(body.reference_date)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+        spawn(ensure_briefing('clock'))  # The user moved time; the briefing starts on its own.
+        return configuration()
+
+    @app.post('/api/reset', dependencies=[Depends(authorized)])
+    async def reset():
+        # The session survives: the presenter stays logged in. Same lock as clock moves, so no analysis writes mid-reset.
+        # ponytail: with Temporal a briefing already running in the worker can still save after the reset; wait for it to end.
+        if analysis_lock.locked():
+            raise HTTPException(429, "Un'analisi è in corso: attendi prima di azzerare la demo")
+        store.reset()
+        spawn(ensure_briefing('reset'))
+        return configuration()
+
+    @app.get('/api/briefing', dependencies=[Depends(authorized)])
+    def briefing():
+        day = store.settings.reference_date
+        if found := store.briefing(day):
+            return {'status': 'ready', 'workflow_id': workflow_id(settings, day, store.reset_stamp()), **found}
+        enabled = settings.briefing_auto and (settings.mode == 'demo' or bool(settings.api_key and settings.model))
+        return {'status': 'running' if analysis_lock.locked() else 'pending' if enabled else 'disabled', 'briefing_date': day}
+
+    @app.post('/api/tasks/{tid}/complete', dependencies=[Depends(authorized)])
+    def complete_task(tid: str):
+        try:
+            store.complete_task(tid)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
+
+    @app.get('/api/goals', dependencies=[Depends(authorized)])
+    def goals():
+        return store.goals()
+
+    @app.post('/api/goals/{gid}/cancel', dependencies=[Depends(authorized)])
+    def cancel_goal(gid: str):
+        try:
+            store.cancel_goal(gid)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
+
+    @app.get('/api/revisits', dependencies=[Depends(authorized)])
+    def revisits():
+        return store.revisits()
+
+    @app.post('/api/revisits/{rid}/cancel', dependencies=[Depends(authorized)])
+    def cancel_revisit(rid: str):
+        try:
+            store.cancel_revisit(rid)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
 
     @app.get('/api/opportunities', dependencies=[Depends(authorized)])
     def opportunities():
@@ -120,11 +228,28 @@ def create_app(settings=None):
         # Shares the analysis lock: one model call at a time for this single-user demo.
         if analysis_lock.locked():
             raise HTTPException(429, "Un'altra richiesta al modello è in corso")
-        async with analysis_lock:
-            try:
-                return await chat(store, [m.model_dump() for m in body.messages])
-            except AgentError as error:
-                raise HTTPException(502, str(error))
+
+        async def stream():
+            # NDJSON: each observable tool event as it happens, then the reply or the error.
+            line = lambda data: json.dumps(data, ensure_ascii=False) + '\n'
+            if analysis_lock.locked():
+                yield line({'error': "Un'altra richiesta al modello è in corso"})
+                return
+            async with analysis_lock:
+                events = asyncio.Queue()
+                task = asyncio.create_task(chat(store, [m.model_dump() for m in body.messages], on_event=events.put_nowait))
+                task.add_done_callback(lambda _: events.put_nowait(None))
+                try:
+                    while (event := await events.get()) is not None:
+                        yield line({'step': event})
+                    try:
+                        yield line({'reply': task.result()})
+                    except AgentError as error:
+                        yield line({'error': str(error)})
+                finally:
+                    task.cancel()  # Client gone: stop paying for a reply nobody reads.
+
+        return StreamingResponse(stream(), media_type='application/x-ndjson')
 
     @app.post('/api/proposals/{pid}/approve', dependencies=[Depends(authorized)])
     def approve(pid: str, body: ApprovalRequest):

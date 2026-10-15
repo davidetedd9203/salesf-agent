@@ -19,4 +19,14 @@ class Settings:
     password: str = os.getenv('DEMO_PASSWORD', 'local-demo')
     origin: str = os.getenv('APP_ORIGIN', 'http://localhost:3000')
     cookie_secure: bool = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
+    # The server starts the morning briefing by itself, once per demo date (see backend/briefing.py).
+    briefing_auto: bool = os.getenv('BRIEFING_AUTO', 'true').lower() == 'true'
+    # fixed: three phased reads (measured F1-F11). search: the model chooses what to read. pipeline: one call with everything.
+    strategy: str = os.getenv('AGENT_STRATEGY', 'fixed')
+    # Distractor notes per labeled opportunity from data/v3 (0 = original fixture only).
+    account_noise: int = int(os.getenv('ACCOUNT_NOISE', '0'))
+    # asyncio (default, no extra service) or temporal (durable workflow, see backend/workflows.py).
+    orchestrator: str = os.getenv('ORCHESTRATOR', 'asyncio')
+    temporal_address: str = os.getenv('TEMPORAL_ADDRESS', 'localhost:7233')
+    temporal_task_queue: str = os.getenv('TEMPORAL_TASK_QUEUE', 'sales-copilot-briefing')
 

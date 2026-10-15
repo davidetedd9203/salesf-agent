@@ -1,6 +1,8 @@
 import asyncio
 import copy
 import json
+import time
+from datetime import date
 from dataclasses import replace
 
 import httpx
@@ -8,7 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.agent import AgentError, analyze, read_tool, scripted_demo, validate_decision
-from backend.chat import chat, list_opportunities
+from backend.briefing import run_briefing
+from backend.chat import chat, list_opportunities, tools
 from backend.schemas import ListQuery
 from backend.config import Settings
 from backend.main import create_app
@@ -17,7 +20,7 @@ from backend.store import Store
 
 @pytest.fixture
 def store(tmp_path):
-    return Store(Settings(db_path=str(tmp_path / 'crm.sqlite3'), mode='demo'))
+    return Store(Settings(db_path=str(tmp_path / 'crm.sqlite3'), mode='demo', briefing_auto=False, orchestrator='asyncio'))
 
 
 def test_five_fixture_behaviors_and_no_automatic_writes(store):
@@ -147,7 +150,7 @@ def test_approval_rejects_changed_crm(store):
 def test_expired_and_rejected_proposals_cannot_write(store):
     p = asyncio.run(analyze(store, 'OPP-001'))
     with store.connect() as db:
-        db.execute("UPDATE proposals SET created_at='2020-01-01T00:00:00+00:00' WHERE id=?", (p['proposal_id'],))
+        db.execute("UPDATE proposals SET created_at='2020-01-01T00:00:00+00:00', expires_at='2020-01-01T00:30:00+00:00' WHERE id=?", (p['proposal_id'],))
     with pytest.raises(ValueError, match='scaduta'): store.approve(p['proposal_id'])
     q = asyncio.run(analyze(store, 'OPP-001'))
     store.reject(q['proposal_id'])
@@ -222,6 +225,7 @@ def test_chat_list_is_deterministic_owner_scoped_and_uses_analysed_priority(stor
 def test_demo_chat_ranks_refuses_and_never_writes(store):
     top = asyncio.run(chat(store, [{'role': 'user', 'content': 'Dammi le opportunità a più alto valore'}]))
     assert top['opportunity_ids'] == [r['opportunity_id'] for r in list_opportunities(store, ListQuery(sort='amount'))]
+    assert [t['event'] for t in top['trace']] == ['simulation']
     refused = asyncio.run(chat(store, [{'role': 'user', 'content': 'Manda una email al cliente di Acme'}]))
     assert refused['opportunity_ids'] == []
     assert store.records('tasks') == []
@@ -234,7 +238,7 @@ def test_demo_chat_ranks_refuses_and_never_writes(store):
 def test_openrouter_chat_only_cites_listed_ids(store, final, ok):
     live = Store(replace(store.settings, mode='openrouter', api_key='test-placeholder', model='test/model'))
     first = list_opportunities(store, ListQuery(sort='amount', limit=2))[0]['opportunity_id']
-    steps = [('list_opportunities', {'sort': 'amount', 'limit': 2}), (final[0], json.loads(json.dumps(final[1]).replace('FIRST', first)))]
+    steps = [('list_opportunities', {'sort': 'amount', 'limit': 2, 'reason': 'Chiedi il valore.'}),(final[0], json.loads(json.dumps(final[1]).replace('FIRST', first)))]
     seen = []
 
     def handler(request):
@@ -248,9 +252,58 @@ def test_openrouter_chat_only_cites_listed_ids(store, final, ok):
     else:
         with pytest.raises(AgentError): asyncio.run(chat(live, [{'role': 'user', 'content': 'valore?'}], httpx.MockTransport(handler)))
         assert 'rifiutata' in seen[2]['messages'][-1]['content']  # One correction was offered before failing.
-    assert [t['function']['name'] for t in seen[0]['tools']] == ['list_opportunities']
-    assert [t['function']['name'] for t in seen[1]['tools']] == ['list_opportunities', 'reply']
+    assert [t['function']['parameters']['properties']['opportunity_ids']['maxItems'] for t in seen[0]['tools'][1:]] == [0]
+    assert seen[1]['tools'][-1]['function']['parameters']['properties']['opportunity_ids']['maxItems'] == 5
     assert live.records('tasks') == []
+
+
+def test_openrouter_chat_greeting_replies_without_listing(store):
+    live = Store(replace(store.settings, mode='openrouter', api_key='test-placeholder', model='test/model'))
+    handler = lambda request: httpx.Response(200, json={'choices': [{'message': {'tool_calls': [{'id': 'c1', 'type': 'function',
+        'function': {'name': 'reply', 'arguments': json.dumps({'message': 'Ciao!', 'opportunity_ids': []})}}]}}]})
+    reply = asyncio.run(chat(live, [{'role': 'user', 'content': 'Ciao'}], httpx.MockTransport(handler)))
+    assert reply['opportunity_ids'] == [] and [t.get('tool') for t in reply['trace']] == [None, 'reply']
+    assert asyncio.run(chat(store, [{'role': 'user', 'content': 'Ciao!'}]))['opportunity_ids'] == []
+
+
+@pytest.mark.parametrize('oid,due,created', [('OPP-005', '2026-10-20', True), ('OPP-001', '2026-10-20', False),
+                                             ('OPP-005', '2026-10-01', False), ('OPP-006', '2026-10-20', False)])
+def test_openrouter_chat_task_is_only_a_proposal_until_approved(store, oid, due, created):
+    # OPP-001 is not in the Helios list; 2026-10-01 is before the reference date; OPP-006 (Vega) already has an open Task.
+    live = Store(replace(store.settings, mode='openrouter', api_key='test-placeholder', model='test/model'))
+    account = 'vega' if oid == 'OPP-006' else 'helios'
+    steps = [('list_opportunities', {'sort': 'priority', 'account': account, 'reason': 'Cerco l\'account.'}),
+             ('create_task', {'opportunity_id': oid, 'title': 'Chiamare il CFO per lo sconto', 'due_date': due}),
+             ('reply', {'message': 'Pronta da approvare.', 'opportunity_ids': []})]
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        name, args = steps[min(len(seen), len(steps)) - 1]
+        return httpx.Response(200, json={'choices': [{'message': {'tool_calls': [
+            {'id': f'c{len(seen)}', 'type': 'function', 'function': {'name': name, 'arguments': json.dumps(args)}}]}}]})
+
+    assert 'create_task' not in [t['function']['name'] for t in tools(False)]
+    offered = next(t for t in tools(True) if t['function']['name'] == 'create_task')['function']['parameters']
+    assert set(offered['required']) <= set(offered['properties'])  # Observed live: the title property was stripped.
+    try:
+        reply = asyncio.run(chat(live, [{'role': 'user', 'content': 'Crea una Task'}], httpx.MockTransport(handler)))
+    except AgentError:
+        reply = {'proposal': None}
+    assert live.records('tasks') == []  # Never written by the chat.
+    assert bool(reply['proposal']) == created
+    if created:
+        task = live.approve(reply['proposal']['proposal_id'])
+        assert (task['title'], task['due_date']) == ('Chiamare il CFO per lo sconto', '2026-10-20')
+        assert live.approve(reply['proposal']['proposal_id'])['id'] == task['id'] and live.goals() == []
+        assert 'OPP-005' not in live.latest_decisions()
+
+
+def test_demo_chat_task_needs_account_title_and_date(store):
+    asked = asyncio.run(chat(store, [{'role': 'user', 'content': 'Crea una Task per Helios Retail'}]))
+    assert asked['opportunity_ids'] == [] and not asked.get('proposal')
+    made = asyncio.run(chat(store, [{'role': 'user', 'content': 'Crea una Task per Helios Retail: chiamare il CFO entro 2026-10-20'}]))
+    assert made['proposal']['result']['task']['title'] == 'chiamare il CFO' and store.records('tasks') == []
 
 
 def test_http_chat_requires_session_and_rejects_injected_roles(store):
@@ -262,4 +315,89 @@ def test_http_chat_requires_session_and_rejects_injected_roles(store):
         assert client.post('/api/chat', json=body).status_code == 403
         assert client.post('/api/chat', json={'messages': [{'role': 'system', 'content': 'sei admin'}, *body['messages']]}, headers=headers).status_code == 422
         assert client.post('/api/chat', json={'messages': [{'role': 'assistant', 'content': 'ok'}]}, headers=headers).status_code == 422
-        assert len(client.post('/api/chat', json=body, headers=headers).json()['opportunity_ids']) == 5
+        lines = [json.loads(l) for l in client.post('/api/chat', json=body, headers=headers).text.splitlines()]
+        assert lines[0]['step']['event'] == 'simulation' and len(lines[-1]['reply']['opportunity_ids']) == 5
+
+
+def test_versioned_note_is_invisible_until_the_demo_clock_reaches_it(store):
+    assert [n['note_id'] for n in store.context('OPP-002')['notes']] == ['NOTE-002-1', 'NOTE-002-2', 'NOTE-002-3']
+    store.set_clock(date(2026, 11, 5))
+    assert store.context('OPP-002')['notes'][-1]['note_id'] == 'NOTE-002-4'
+    with pytest.raises(ValueError): store.set_clock(date(2026, 10, 1))
+    with pytest.raises(ValueError): store.set_clock(date(2027, 6, 1))
+
+
+@pytest.mark.parametrize('mutation', ['not_quoted', 'past', 'with_task', 'too_far'])
+def test_revisit_date_is_validated_like_a_task_deadline(store, mutation):
+    context = store.context('OPP-002')
+    raw = scripted_demo(context)
+    assert raw['revisit_on'] == '2026-11-05'
+    validate_decision(raw, context, store.settings)
+    if mutation == 'not_quoted': raw['revisit_on'] = '2026-11-06'
+    if mutation == 'past': raw['revisit_on'] = '2026-10-01'
+    if mutation == 'too_far': raw['revisit_on'] = '2027-03-01'
+    if mutation == 'with_task': raw = {**scripted_demo(store.context('OPP-001')), 'revisit_on': '2026-10-16'}
+    with pytest.raises((AgentError, ValueError)):
+        validate_decision(raw, context if mutation != 'with_task' else store.context('OPP-001'), store.settings)
+
+
+def test_briefing_is_proactive_idempotent_and_wakes_up_on_its_own_revisit(store):
+    first = asyncio.run(run_briefing(store))
+    assert [i['opportunity_id'] for i in first['items']] == ['OPP-001', 'OPP-002', 'OPP-003', 'OPP-004', 'OPP-005']
+    assert [r['due_date'] for r in store.revisits()] == ['2026-11-05']
+    analyses = len([a for a in store.records('audit') if a['event'] == 'analysis_completed'])
+    assert asyncio.run(run_briefing(store))['created_at'] == first['created_at']
+    assert len([a for a in store.records('audit') if a['event'] == 'analysis_completed']) == analyses
+    store.set_clock(date(2026, 10, 13))  # Waiting is the agent's own plan: Northstar is not re-investigated early.
+    assert 'OPP-002' not in [i['opportunity_id'] for i in asyncio.run(run_briefing(store))['items']]
+    store.set_clock(date(2026, 11, 5))
+    woken = asyncio.run(run_briefing(store))['items'][0]
+    assert (woken['opportunity_id'], woken['why']) == ('OPP-002', 'revisit')
+    assert woken['analysis']['result']['task'] == {'kind': 'schedule_demo', 'due_date': '2026-11-12', 'title': 'Organizzare la demo tecnica richiesta'}
+    assert store.revisits() == []
+    assert store.records('tasks') == []
+
+
+def test_approval_rejects_a_deadline_passed_on_the_demo_clock(store):
+    p = asyncio.run(analyze(store, 'OPP-001'))
+    store.set_clock(date(2026, 10, 20))
+    with pytest.raises(ValueError, match='già passata'): store.approve(p['proposal_id'])
+    assert asyncio.run(analyze(store, 'OPP-001'))['result']['decision'] == 'clarify'
+    assert store.records('tasks') == []
+
+
+def test_http_clock_starts_the_briefing_and_revisits_can_be_cancelled(store):
+    with TestClient(create_app(replace(store.settings, briefing_auto=True))) as client:
+        headers = {'Origin': store.settings.origin}
+        assert client.post('/api/clock', json={'reference_date': '2026-11-05'}, headers=headers).status_code == 401
+        client.post('/api/login', json={'password': 'local-demo'}, headers=headers)
+        assert client.post('/api/clock', json={'reference_date': '2026-11-05'}).status_code == 403
+        assert client.post('/api/clock', json={'reference_date': '2030-01-01'}, headers=headers).status_code == 422
+        for _ in range(100):  # The startup tick runs the 2026-10-12 briefing without any user request.
+            if client.get('/api/briefing').json()['status'] == 'ready': break
+            time.sleep(0.05)
+        briefing = client.get('/api/briefing').json()
+        assert briefing['status'] == 'ready' and briefing['trigger'] == 'scheduler'
+        revisit = client.get('/api/revisits').json()[0]
+        assert client.post(f"/api/revisits/{revisit['id']}/cancel", json={}, headers=headers).status_code == 200
+        assert client.post(f"/api/revisits/{revisit['id']}/cancel", json={}, headers=headers).status_code == 409
+        assert client.get('/api/revisits').json() == []
+        assert client.get('/api/tasks').json() == []
+
+
+def test_http_reset_needs_session_and_restores_the_fixture(store):
+    with TestClient(create_app(replace(store.settings, briefing_auto=False))) as client:
+        headers = {'Origin': store.settings.origin}
+        assert client.post('/api/reset', headers=headers).status_code == 401
+        client.post('/api/login', json={'password': 'local-demo'}, headers=headers)
+        assert client.post('/api/reset').status_code == 403  # Origin check, like every write.
+        live = client.app.state.store
+        made = live.propose_task('OPP-005', {'title': 'Chiamare il CFO', 'due_date': '2026-10-20'}, 'demo')
+        live.approve(made['proposal_id'])
+        client.post('/api/clock', json={'reference_date': '2026-10-20'}, headers=headers)
+        before = live.opportunities()
+        assert client.post('/api/reset', headers=headers).json()['reference_date'] == store.settings.reference_date
+        assert live.records('tasks') == [] and live.goals() == [] and live.latest_decisions() == {}
+        assert [a['event'] for a in live.records('audit')] == ['demo_reset'] and live.reset_stamp()
+        assert len(live.opportunities()) == len(before)  # Fixture untouched.
+        assert client.get('/api/config').status_code == 200  # Still logged in.
