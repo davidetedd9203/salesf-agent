@@ -13,6 +13,8 @@ from .config import ROOT, Settings
 # Written by the server from the approved task kind; the model never phrases the objective.
 GOAL_OBJECTIVES = {'schedule_demo': 'La demo tecnica richiesta si è svolta',
                    'prepare_security_response': 'La risposta al questionario di sicurezza è stata inviata'}
+# ponytail: fixed follow-up window for clarifications; let the rep pick the date if two days proves wrong.
+CLARIFY_DAYS = 2
 
 
 def timestamp():
@@ -179,6 +181,12 @@ class Store:
     def save_analysis(self, oid, context, decision, trace, mode, ttl=1800):
         pid = str(uuid4())
         now = datetime.now(timezone.utc)
+        if decision['decision'] == 'clarify':
+            # A question alone left the rep with nothing to do. The server drafts the follow-up from a fixed template
+            # (contact name and role come from the CRM, never from the model); it exists only once the rep approves it.
+            who = decision.get('ask_contact')
+            decision = {**decision, 'followup': {'kind': 'clarify', 'due_date': (self.today + timedelta(days=CLARIFY_DAYS)).isoformat(),
+                        'title': f"Chiarire con {who['name']} ({who['role']}) la decisione aperta" if who else 'Chiarire con lo stakeholder la decisione aperta'}}
         with self.connect() as db:
             db.execute('INSERT INTO proposals(id,owner,opportunity_id,snapshot,decision,mode,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?)',
                        (pid, self.settings.owner_id, oid, self.fingerprint(context), json.dumps(decision), mode, now.isoformat(),
@@ -258,12 +266,13 @@ class Store:
             if existing:
                 return dict(existing)  # Idempotent repeat: never create a second task.
             decision = json.loads(p['decision'])
-            if p['status'] != 'pending' or decision['decision'] != 'recommend' or not decision['task']:
+            draft = {'recommend': decision.get('task'), 'clarify': decision.get('followup')}.get(decision['decision'])
+            if p['status'] != 'pending' or not draft:
                 raise ValueError('Questa decisione non può creare una Task')
             expires = datetime.fromisoformat(p['expires_at'] or p['created_at']) + timedelta(seconds=0 if p['expires_at'] else 1800)
             if datetime.now(timezone.utc) > expires:
                 raise ValueError("Proposta scaduta. Analizza di nuovo l'opportunità.")
-            if decision['task']['due_date'] < self.settings.reference_date:
+            if draft['due_date'] < self.settings.reference_date:
                 raise ValueError("La scadenza della Task è già passata. Analizza di nuovo l'opportunità.")
             context = self.context(p['opportunity_id'], db)
             if self.fingerprint(context) != p['snapshot']:
@@ -271,13 +280,13 @@ class Store:
             if has_open_task(context):
                 raise ValueError("Esiste già una Task. Verificala prima di aggiungerne un'altra.")
             task = {'id': str(uuid4()), 'owner': self.settings.owner_id, 'opportunity_id': p['opportunity_id'],
-                    'proposal_id': pid, **decision['task'], 'created_at': timestamp()}
+                    'proposal_id': pid, **draft, 'created_at': timestamp()}
             db.execute('INSERT INTO tasks(id,owner,opportunity_id,proposal_id,title,due_date,created_at) VALUES (?,?,?,?,?,?,?)',
                        (task['id'], task['owner'], task['opportunity_id'], pid, task['title'], task['due_date'], task['created_at']))
             db.execute("UPDATE proposals SET status='approved' WHERE id=?", (pid,))
             self.audit('task_approved', task, db)
             if task['kind'] not in GOAL_OBJECTIVES:
-                # ponytail: free-text chat tasks get no goal, the server has no objective to check; add one if reps want follow-through.
+                # ponytail: chat and clarify tasks get no goal, the server has no objective to check; add one if reps want follow-through.
                 return task
             # The approval also opens a goal: agent memory to follow the task through, not a CRM record.
             goal = {'id': str(uuid4()), 'opportunity_id': task['opportunity_id'], 'task_id': task['id'], 'kind': task['kind'],

@@ -16,7 +16,7 @@ Il loop attuale richiede tutte e tre le letture, quindi l'autonomia è modesta. 
 
 Parti da un database pulito. Mostra il badge della modalità. In modalità scriptata dì esplicitamente: “Queste decisioni sono simulate; il flusso di approvazione e validazione è reale.”
 
-Parti dall'**Assistente**: chiedi “Quali opportunità hanno la priorità più alta?”, mostra che dichiara il criterio e propone card, poi clicca “Analizza queste 5”. Fai una richiesta fuori perimetro (“manda un'email ad Acme”) per mostrare il rifiuto. Poi Acme: note sorgente, evidenze, anteprima della Task e approvazione esplicita. Northstar: attesa legittima. BluePeak: scadenza. Orion: conflitto. Helios: iniezione nella nota e superficie dei tool limitata. Apri **Task** e **Registro evidenze**.
+Parti dall'**Assistente**: chiedi “Quali opportunità hanno la priorità più alta?”, mostra che dichiara il criterio e propone card, poi clicca “Analizza queste 5”. Fai una richiesta fuori perimetro (“manda un'email ad Acme”) per mostrare il rifiuto. Poi Acme: note sorgente, evidenze, anteprima della Task e approvazione esplicita. Northstar: attesa legittima. BluePeak: scadenza. Orion: conflitto, con il promemoria “Chiarire con…” scritto dal server e da approvare; apri lo storico per mostrare quante note ha letto e citato. Helios: iniezione nella nota e superficie dei tool limitata. Apri **Task** e **Registro evidenze**.
 
 Usa il modello reale solo dopo aver configurato e testato quel modello esatto. Se fallisce, mostra errore e traccia invece di passare in silenzio alla simulazione. Se si astiene per il conflitto di date, verifica se è sbagliata l'etichetta.
 

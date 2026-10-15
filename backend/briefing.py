@@ -2,6 +2,8 @@
 Selection is deterministic (revisits the agent scheduled for itself first, then rule candidates);
 the summary is composed by the server, with no extra model call. Nothing is written to the CRM.
 The steps below are shared by the asyncio loop (default) and the optional Temporal workflow (backend/workflows.py)."""
+import asyncio
+
 from .agent import AgentError, analyze
 from .goals import check_goal
 from .store import Store
@@ -66,5 +68,7 @@ async def run_briefing(store: Store, trigger='scheduler'):
     if existing := store.briefing(day):
         return existing  # Idempotent per date: never re-run (or re-bill) the same morning.
     # Known limit, measured in tests/test_temporal.py: a crash here loses the progress of completed analyses.
-    items = [await analyze_item(store, oid, why) for oid, why in select(store)]
+    # Parallel: each item is a different opportunity and waits on the provider, so five in a row took 35-50 s live.
+    # ponytail: at most five concurrent calls; add a semaphore if MAX_ANALYSES grows or the provider rate-limits.
+    items = await asyncio.gather(*(analyze_item(store, oid, why) for oid, why in select(store)))
     return summarize(store, day, trigger, items)

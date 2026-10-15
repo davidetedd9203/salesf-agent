@@ -116,7 +116,9 @@ async def decide(client, settings, messages, offered, trace, started, step, cont
             try:
                 if len(calls) != 1 or not seen['ready']:
                     raise AgentError('La decisione richiede prima le letture minime e una sola tool call finale')
-                return validate_account_decision(arguments, context, seen, settings), corrections, len(calls)
+                result = validate_account_decision(arguments, context, seen, settings)
+                trace.append({'event': 'notes_read', 'note_ids': sorted(seen['notes'])})
+                return result, corrections, len(calls)
             except (AgentError, ValidationError) as error:
                 if corrections:
                     raise
@@ -191,5 +193,7 @@ def scripted_account(oid, context, settings, trace, strategy):
     if raw['decision'] == 'clarify' and signer:
         raw['ask_contact_id'] = next((c['contact_id'] for c in context['contacts'] if f"{c['name']} ({c['role']})" in signer['body']), None)
         raw['evidence'] = raw['evidence'][:4] + [{'note_id': signer['note_id'], 'quote': signer['body']}]
+    result = validate_account_decision(raw, context, seen, settings)
+    trace.append({'event': 'notes_read', 'note_ids': sorted(seen['notes'])})
     trace.append({'event': 'simulation', 'detail': f'Simulazione scriptata ({strategy}) sulle fixture; nessun modello chiamato.'})
-    return validate_account_decision(raw, context, seen, settings)
+    return result

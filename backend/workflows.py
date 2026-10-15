@@ -63,11 +63,10 @@ class MorningBriefing:
     async def run(self, day: str, trigger: str) -> dict:
         picked = await workflow.execute_activity_method(
             BriefingActivities.select_opportunities, day, start_to_close_timeout=timedelta(seconds=30))
-        items = []
-        for oid, why in picked:  # Sequential on purpose: one model call at a time, as in the asyncio path.
-            items.append(await workflow.execute_activity_method(
-                BriefingActivities.analyze_opportunity, args=[day, oid, why],
-                start_to_close_timeout=timedelta(seconds=120), heartbeat_timeout=timedelta(seconds=10), retry_policy=RETRY))
+        # Parallel as in the asyncio path; each activity still retries on its own.
+        items = await asyncio.gather(*(workflow.execute_activity_method(
+            BriefingActivities.analyze_opportunity, args=[day, oid, why],
+            start_to_close_timeout=timedelta(seconds=120), heartbeat_timeout=timedelta(seconds=10), retry_policy=RETRY) for oid, why in picked))
         return await workflow.execute_activity_method(
             BriefingActivities.save_briefing, args=[day, trigger, items], start_to_close_timeout=timedelta(seconds=30))
 

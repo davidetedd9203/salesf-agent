@@ -5,7 +5,7 @@ import {useEffect, useRef, useState} from 'react';
 const money = value => new Intl.NumberFormat('it-IT', {style: 'currency', currency: 'EUR', maximumFractionDigits: 0}).format(value);
 const welcome = {role: 'assistant', local: true, content: 'Ciao Alex. Chiedimi quali opportunità guardare oggi: le ordino e ti spiego il criterio. Le analisi partono solo quando le avvii tu.'};
 const suggestions = ['Quali opportunità hanno la priorità più alta?', 'Quali hanno il valore più alto?', 'Quali chiudono prima?'];
-const labels = {recommend: 'Azione proposta', clarify: 'Serve il tuo input', no_action: 'Nessuna azione necessaria'};
+const labels = {recommend: 'Azione proposta', clarify: 'Da chiarire con il cliente', no_action: 'Nessuna azione necessaria'};
 // Goal follow-through: the model reports what happened, the server policy picks the action shown here.
 const goalActions = {close: ['Obiettivo raggiunto', 'recommend'], wait: ['Obiettivo in corso', 'no_action'],
   nudge: ['In ritardo: promemoria', 'clarify'], escalate: ['Escalation: decidi tu', 'failed'], ask_rep: ['Bloccato: serve una tua decisione', 'clarify']};
@@ -49,6 +49,7 @@ export default function Home() {
   const [audit, setAudit] = useState([]);
   const [view, setView] = useState('Oggi');
   const [search, setSearch] = useState('');
+  const [onlyCandidates, setOnlyCandidates] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -63,6 +64,8 @@ export default function Home() {
   const [chatOpen, setChatOpen] = useState(false);
   const chatLog = useRef(null);
   const mergedBriefing = useRef('');
+  const briefingStatus = useRef('');
+  const [freshBriefing, setFreshBriefing] = useState(false);
 
   useEffect(() => {chatLog.current?.scrollTo({top: chatLog.current.scrollHeight});}, [messages, chatOpen]);
 
@@ -74,6 +77,12 @@ export default function Home() {
       mergedBriefing.current = b.created_at;
       setResults(old => ({...old, ...Object.fromEntries(b.items.filter(i => i.analysis).map(i => [i.opportunity_id, i.analysis]))}));
     }
+    // Animate only the moment the briefing finishes while the rep is watching, not every page load.
+    if (b.status === 'ready' && ['pending', 'running'].includes(briefingStatus.current)) {
+      setFreshBriefing(true);
+      setNotice(`Briefing pronto: ${b.counts.recommend} da approvare, ${b.counts.clarify} da chiarire, ${b.counts.no_action} senza azione.`);
+    }
+    briefingStatus.current = b.status;
     setBriefing(b);
   }
 
@@ -186,8 +195,7 @@ export default function Home() {
   }
 
   function selectOpportunity(oid) {
-    setSelected(oid); setReview(null);
-    if (view !== 'Oggi' && view !== 'Opportunità') setView('Opportunità');
+    setSelected(oid); setReview(null); setView('Opportunità');
     if (window.matchMedia('(max-width: 650px)').matches) {
       setChatOpen(false);
       requestAnimationFrame(() => document.getElementById('selected-opportunity')?.scrollIntoView({block: 'start'}));
@@ -207,11 +215,16 @@ export default function Home() {
   </form></main>;
 
   const shortlist = opportunities.filter(o => o.candidate_reasons.length).sort((a,b) => a.close_date.localeCompare(b.close_date));
-  const visible = (view === 'Oggi' ? shortlist : opportunities).filter(o => `${o.account_name} ${o.stage}`.toLowerCase().includes(search.toLowerCase()));
+  const visible = (onlyCandidates ? shortlist : opportunities).filter(o => `${o.account_name} ${o.stage}`.toLowerCase().includes(search.toLowerCase()));
   const current = opportunities.find(o => o.opportunity_id === selected);
   const analysis = results[selected];
   const decision = analysis?.result;
   const state = resolved[analysis?.proposal_id];
+  const draft = decision?.task || decision?.followup;
+  // Full CRM history, newest first; read and cited counts come from the server's notes_read trace event, not the model.
+  const history = context ? [...context.notes].sort((a, b) => b.created_at.localeCompare(a.created_at)) : [];
+  const readIds = analysis?.trace?.find(t => t.event === 'notes_read')?.note_ids;
+  const read = new Set(readIds || []), cited = new Set(decision?.evidence.map(e => e.note_id) || []);
 
   return <div className="app-shell">
     <header className="global-header"><a href="/" className="wordmark" aria-label="Sales Copilot, home"><img src="/logo.svg" alt="" width="46" height="32"/></a>
@@ -233,8 +246,7 @@ export default function Home() {
       {notice && <p className="notice" role="status">{notice}</p>}
       {busy && <div className="working" role="status"><span className="spinner" aria-hidden="true"/>{busy}… {config.mode === 'openrouter' && 'Ogni analisi è limitata a 90 secondi.'}</div>}
 
-      {(view === 'Oggi' || view === 'Opportunità') && <>
-        {view === 'Oggi' && briefing && <section className="briefing" aria-label="Briefing del mattino">
+      {view === 'Oggi' && briefing && <section className={freshBriefing ? 'briefing fresh' : 'briefing'} aria-label="Briefing del mattino" onAnimationEnd={e => e.target === e.currentTarget && setFreshBriefing(false)}>
           <div className="chat-heading"><h2>Briefing del mattino · {briefing.briefing_date}</h2><span>{briefing.status === 'ready'
             ? `Preparato dall’agente alle ${new Date(briefing.created_at).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}, senza una tua richiesta · ${briefing.mode === 'demo' ? 'simulazione scriptata' : 'modello reale'} · nessuna Task creata`
             : 'Avviato dal server una volta per data'}
@@ -244,7 +256,7 @@ export default function Home() {
           {(briefing.status === 'pending' || briefing.status === 'running') && <div className="working briefing-body" role="status"><span className="spinner" aria-hidden="true"/>L’agente sta preparando il briefing di oggi…</div>}
           {briefing.status === 'ready' && <div className="briefing-body">
             <p className="briefing-summary"><strong>{briefing.counts.recommend}</strong> da approvare · <strong>{briefing.counts.clarify}</strong> da chiarire · <strong>{briefing.counts.no_action}</strong> senza azione{briefing.counts.errors > 0 && <> · <strong>{briefing.counts.errors}</strong> fallite</>}</p>
-            <ul className="briefing-list">{briefing.items.map(i => {const d = i.analysis?.result; const g = i.goal_check?.goal; const c = g?.last_check; return <li key={i.opportunity_id}>
+            <ul className="briefing-list">{briefing.items.map((i, n) => {const d = i.analysis?.result; const g = i.goal_check?.goal; const c = g?.last_check; return <li key={i.opportunity_id} style={{'--i': n}}>
               <div className="briefing-row"><button className="account-button" onClick={() => selectOpportunity(i.opportunity_id)}>{i.account_name}</button>
                 {i.why === 'revisit' && <span className="tag">Ricontrollo che l’agente si era programmato</span>}
                 {g && <span className="tag">Obiettivo: {g.objective}</span>}
@@ -261,9 +273,12 @@ export default function Home() {
           {revisits.length > 0 && <div className="briefing-body revisits"><h3>Ricontrolli programmati dall’agente</h3><ul>{revisits.map(r => <li key={r.id}>
             <span>{opportunities.find(o => o.opportunity_id === r.opportunity_id)?.account_name} · {r.due_date}</span>
             <button className="text-button" onClick={() => cancelRevisit(r.id)}>Annulla</button></li>)}</ul></div>}
+          <p className="briefing-body muted">Tutte le opportunità, con storico e analisi, sono nella vista <button className="text-button" onClick={() => setView('Opportunità')}>Opportunità</button>.</p>
         </section>}
-        <div className="toolbar"><label className="search-label" htmlFor="search">Cerca un’opportunità<input id="search" type="search" placeholder="Cerca account o fase" value={search} onChange={e => setSearch(e.target.value)}/></label></div>
-        <div className="split"><section className="queue" aria-label="Opportunità"><div className="queue-heading"><h2>{view === 'Oggi' ? 'Coda di revisione' : 'Portafoglio opportunità'}</h2><span>{visible.length} record</span></div>
+      {view === 'Opportunità' && <>
+        <div className="toolbar"><label className="search-label" htmlFor="search">Cerca un’opportunità<input id="search" type="search" placeholder="Cerca account o fase" value={search} onChange={e => setSearch(e.target.value)}/></label>
+          <label className="filter"><input type="checkbox" checked={onlyCandidates} onChange={e => setOnlyCandidates(e.target.checked)}/> Solo da rivedere ({shortlist.length})</label></div>
+        <div className="split"><section className="queue" aria-label="Opportunità"><div className="queue-heading"><h2>{onlyCandidates ? 'Da rivedere' : 'Portafoglio opportunità'}</h2><span>{visible.length} record</span></div>
           <div className="table-scroll"><table><thead><tr><th>Account / fase</th><th>Valore</th><th>Segnale</th></tr></thead><tbody>{visible.map(o => <tr key={o.opportunity_id} className={selected === o.opportunity_id ? 'selected' : ''}><td><button className="account-button" onClick={() => selectOpportunity(o.opportunity_id)} aria-pressed={selected === o.opportunity_id}>{o.account_name}</button><span className="subline">{o.stage} · chiusura {o.close_date}</span></td><td className="amount">{money(o.amount_eur)}</td><td>{results[o.opportunity_id]?.error ? <span className="status failed">Analisi fallita</span> : results[o.opportunity_id]?.result ? <span className={`status ${results[o.opportunity_id].result.decision}`}>{labels[results[o.opportunity_id].result.decision]}</span> : <span className="signal">{o.candidate_reasons[0] || 'Task già pianificata'}</span>}</td></tr>)}</tbody></table></div>
           {!visible.length && <div className="empty">Nessuna opportunità corrispondente. Prova un’altra ricerca.</div>}
         </section>
@@ -275,11 +290,13 @@ export default function Home() {
           {decision && <div className="finding"><div className="finding-title"><h3>{labels[decision.decision]}</h3><span className={`priority ${decision.priority}`}>priorità {{high: 'alta', normal: 'normale', low: 'bassa'}[decision.priority]}</span></div><p>{decision.reason}</p>
             {decision.revisit_on && <p className="question"><strong>Ricontrollo programmato</strong><br/>L’agente rianalizzerà questa opportunità il {decision.revisit_on}, senza che tu debba chiederlo.</p>}
             {decision.question && <p className="question"><strong>{decision.ask_contact ? `Chiedi a ${decision.ask_contact.name} (${decision.ask_contact.role})` : 'Chiarisci con lo stakeholder'}</strong><br/>{decision.question}</p>}
-            {decision.task && <div className="task-preview"><h4>{decision.task.title}</h4><p>Scadenza {decision.task.due_date} · assegnata a te</p>{state ? <p className="resolution">{state === 'approved' ? 'Task creata' : 'Proposta archiviata'}</p> : review === analysis.proposal_id ? <div className="approval"><p>Stai approvando esattamente questa Task nel CRM simulato.</p><button className="primary full" disabled={!!busy} onClick={() => approve(analysis)}>Conferma e crea la Task</button><button className="text-button" disabled={!!busy} onClick={() => setReview(null)}>Torna alla revisione</button></div> : <div className="button-row"><button className="primary" disabled={!!busy} onClick={() => setReview(analysis.proposal_id)}>Rivedi la Task</button><button className="text-button" disabled={!!busy} onClick={() => reject(analysis)}>Archivia</button></div>}</div>}
+            {draft && <div className="task-preview"><h4>{draft.title}</h4><p>Scadenza {draft.due_date} · assegnata a te{decision.followup && <><br/>Promemoria scritto dal server: contatti tu il cliente, l’agente non invia nulla.</>}</p>{state ? <p className="resolution">{state === 'approved' ? 'Task creata' : 'Proposta archiviata'}</p> : review === analysis.proposal_id ? <div className="approval"><p>Stai approvando esattamente questa Task nel CRM simulato.</p><button className="primary full" disabled={!!busy} onClick={() => approve(analysis)}>Conferma e crea la Task</button><button className="text-button" disabled={!!busy} onClick={() => setReview(null)}>Torna alla revisione</button></div> : <div className="button-row"><button className="primary" disabled={!!busy} onClick={() => setReview(analysis.proposal_id)}>Rivedi la Task</button><button className="text-button" disabled={!!busy} onClick={() => reject(analysis)}>Archivia</button></div>}</div>}
             <h4 className="evidence-label">Evidenze a supporto</h4>{decision.evidence.map(e => <blockquote key={e.note_id}><p>{e.quote}</p><cite>{e.note_id}</cite></blockquote>)}
             <details className="trace"><summary>Attività dei tool e validazione</summary><pre>{JSON.stringify(analysis.trace, null, 2)}</pre></details>
           </div>}
-          <details className="raw-notes" open={!decision}><summary>Note CRM · dati di origine non fidati</summary>{context ? context.notes.map(n => <article className="note" key={n.note_id}><p>{n.body}</p><small>{n.note_id} · registrata il {n.created_at}</small></article>) : <p role="status">Caricamento note…</p>}</details>
+          <details className="raw-notes" open={!decision}><summary>Storico CRM · {history.length} note{readIds && ` · ${read.size} lette dall’agente · ${cited.size} citate`} · dati di origine non fidati</summary>
+            {context ? <>{history.map(n => <article className={cited.has(n.note_id) ? 'note cited' : 'note'} key={n.note_id}><p>{n.body}</p><small>{n.note_id} · {n.source} · registrata il {n.created_at}{cited.has(n.note_id) ? ' · citata come evidenza' : read.has(n.note_id) ? ' · letta dall’agente' : ''}</small></article>)}
+              <h4 className="evidence-label">Attività registrate</h4>{context.activities.map(a => <article className="note" key={a.activity_id}><p>{a.summary}</p><small>{a.type} · {a.completed_at}</small></article>)}</> : <p role="status">Caricamento note…</p>}</details>
         </>}</section></div>
       </>}
       {view === 'Task' && <section className="records"><table><thead><tr><th>Task</th><th>Account</th><th>Scadenza</th><th>Approvazione</th><th>Stato</th></tr></thead><tbody>{tasks.map(t => <tr key={t.id}><td>{t.title}</td><td>{opportunities.find(o => o.opportunity_id === t.opportunity_id)?.account_name}</td><td>{t.due_date}</td><td><span className="status no_action">Approvata da te</span></td><td>{t.completed_at ? `Completata il ${t.completed_at}` : <button className="text-button" onClick={() => post(`tasks/${t.id}/complete`, 'Task completata: chiuso anche l’obiettivo collegato.')}>Segna completata</button>}</td></tr>)}</tbody></table>{!tasks.length && <div className="empty"><h2>Ancora nessuna Task approvata</h2><p>Analizza un’opportunità, rivedi la proposta, poi conferma la Task.</p></div>}</section>}

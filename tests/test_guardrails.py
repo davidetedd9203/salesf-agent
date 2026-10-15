@@ -158,10 +158,28 @@ def test_expired_and_rejected_proposals_cannot_write(store):
     assert store.records('tasks') == []
 
 
-def test_abstention_and_clarification_cannot_write(store):
-    for oid in ['OPP-002','OPP-004','OPP-005']:
+def test_abstention_cannot_write(store):
+    for oid in ['OPP-002','OPP-005']:
         p = asyncio.run(analyze(store, oid))
         with pytest.raises(ValueError): store.approve(p['proposal_id'])
+
+
+def test_clarification_writes_only_the_server_drafted_followup(store):
+    p = asyncio.run(analyze(store, 'OPP-004'))
+    assert p['result']['followup'] == {'kind': 'clarify', 'due_date': '2026-10-14', 'title': 'Chiarire con lo stakeholder la decisione aperta'}
+    assert store.records('tasks') == []
+    task = store.approve(p['proposal_id'])
+    assert (task['title'], task['due_date']) == ('Chiarire con lo stakeholder la decisione aperta', '2026-10-14')
+    assert store.goals() == []  # No goal: the server has no objective to check for a clarification.
+    with pytest.raises(ValueError): store.approve(asyncio.run(analyze(store, 'OPP-004'))['proposal_id'])  # Open task: no duplicate.
+    # With account context the server names the contact the agent chose among those it read.
+    wide = Store(replace(store.settings, db_path=store.settings.db_path + '.wide', strategy='search', account_noise=10))
+    q = asyncio.run(analyze(wide, 'OPP-004'))
+    who = q['result']['ask_contact']
+    assert q['result']['followup']['title'] == f"Chiarire con {who['name']} ({who['role']}) la decisione aperta"
+    read = next(t['note_ids'] for t in q['trace'] if t['event'] == 'notes_read')
+    assert 0 < len(read) < len(wide.context('OPP-004')['notes'])
+    assert {e['note_id'] for e in q['result']['evidence']} <= set(read)
 
 
 def test_concurrent_alternative_proposal_cannot_duplicate_task(store):

@@ -267,6 +267,8 @@ async def analyze(store: Store, oid: str, transport=None, ttl=1800):
             decision = await asyncio.wait_for(openrouter_decision(oid, context, store.settings, trace, transport), timeout=90)
         else:
             raise AgentError('AGENT_MODE deve essere demo oppure openrouter')
+        if strategy == 'fixed':  # get_notes returns every note, and it is required before submit_decision.
+            trace.append({'event': 'notes_read', 'note_ids': [n['note_id'] for n in context['notes']]})
         trace.append({'event': 'validation_passed', 'elapsed_ms': round((time.monotonic() - started) * 1000)})
         return store.save_analysis(oid, context, decision, trace, store.settings.mode, ttl)
     except Exception as error:

@@ -27,6 +27,10 @@
 | Saluti e rifiuti senza query (14/10/2026) | Al primo round `reply` è offerto con `opportunity_ids` vuoto (`maxItems: 0`); con ID solo dopo `list_opportunities` | Solo `list_opportunities` al primo round | Osservato dall'utente: a “Ciao” la chat eseguiva sempre una query inutile. Le fasi restano strutturali: prima della lista citare un ID è un errore di schema. Misurato solo in demo e con test: va rieseguita `--suite chat` live (ora 7 casi, incluso “Ciao”). |
 | Task chiesta in chat (14/10/2026) | Tool `create_task` della chat, offerto solo dopo `list_opportunities`: titolo in testo libero dalle parole del venditore (massimo 120 caratteri, una riga), scadenza esplicita non passata, opportunità restituita dalla query. Crea solo una proposta (snapshot, scadenza, Task aperta già esistente → rifiuto); la Task nasce col clic su “Crea Task” attraverso lo stesso endpoint di approvazione. Se manca azienda, cosa o quando, l'agente chiede | Chat solo in lettura (C3); titoli solo dalla allowlist | Richiesto dall'utente, testo libero compreso. Supera la regola “Due tipi in allowlist” solo per la chat: il titolo lo scrive il venditore, non il modello dalle note (la chat non legge note). Costi accettati: nessuna citazione (la card dice “richiesta da te in chat”) e nessun obiettivo di follow-through, perché il server non ha un obiettivo da verificare. Misurato solo in demo e con test: `--suite chat` live ora ha 6 casi di Task (valida, dati mancanti, iniezione, Task esistente, richiesta mista con email, data passata). |
 | Razionale nella chat (14/10/2026) | Campo `reason` obbligatorio (max 200 caratteri) nella chiamata `list_opportunities`, mostrato nei passaggi e rimosso prima della query | Mostrare il ragionamento del provider | Richiesto dall'utente. È una frase scritta per il venditore e registrata come argomento del tool, non chain-of-thought (invariante 10); non cambia i risultati. |
+| Follow-up di un chiarimento (15/10/2026) | Su `clarify` il server scrive una bozza di Task da un modello fisso: “Chiarire con {nome} ({ruolo}) la decisione aperta”, o “con lo stakeholder” senza contatto, scadenza a 2 giorni. Si crea solo col clic su “Conferma”, dallo stesso endpoint di approvazione (snapshot, scadenza, Task aperta → rifiuto). Nessun obiettivo di follow-through | Solo la domanda (prima); il venditore scrive la risposta e l'agente rianalizza | Osservato dall'utente su Orion: “serve il tuo input” senza nulla da fare. Il modello non scrive né titolo né data; nome e ruolo vengono dal CRM. La risposta scritta dal venditore sarebbe una nuova scrittura sul CRM e un nuovo input da validare: rinviata. Misurato solo in demo e con test. |
+| Briefing in parallelo (15/10/2026) | Le 5 analisi del briefing partono insieme (`asyncio.gather`; con Temporal, activity in parallelo con retry singolo) | Una alla volta | Osservato dall'utente: briefing troppo lento. Misurato live con `z-ai/glm-5.3`: 19,7 s in totale contro 55,8 s di somma delle singole analisi (la più lenta, Northstar, 19,6 s). Stesse decisioni attese. Il lock condiviso resta: durante il briefing la chat attende. |
+| Viste Oggi e Opportunità (15/10/2026) | Oggi mostra solo briefing, obiettivi e ricontrolli; tabella e dettaglio solo in Opportunità, con filtro “Solo da rivedere” | Coda filtrata ripetuta in Oggi | Osservato dall'utente: la stessa tabella in due viste. |
+| Storico visibile (15/10/2026) | Il dettaglio mostra tutte le note in ordine di data e le attività, con i conteggi “N note · lette dall'agente · citate” presi dall'evento `notes_read` che il server registra nella trace | Mostrare solo le evidenze | Rende ispezionabile la selezione: con `ACCOUNT_NOISE=200` e `search` Orion ha 204 note, l'agente scriptato ne legge 7 e ne cita 3. I conteggi sono eventi osservabili dei tool, non ragionamento (invariante 10). |
 | Streaming (12/10/2026) | Nessuno nella v1: risposta JSON unica | SSE | Le risposte arrivano in pochi secondi; lo streaming si aggiunge se la latenza percepita diventa un problema misurato. |
 | Proattività (13/10/2026) | Briefing del mattino avviato dal server una volta per data, più ricontrolli che l'agente si programma da solo | Agente che agisce da solo; nessuna proattività | Proattività (chi avvia il lavoro) e autonomia (chi approva) sono assi separati: si aumenta la prima, la seconda resta umana. Nessuna nuova scrittura sul CRM. |
 | Selezione del briefing (13/10/2026) | Deterministica: prima i ricontrolli scaduti, poi le candidate per chiusura più vicina, massimo 5; esclusi i record con un ricontrollo futuro | LLM che sceglie quali trattative analizzare | Costo prevedibile e criterio ispezionabile; le regole hanno recall 5/5 sui casi etichettati. L'agentività sta nel ricontrollo deciso dal modello, non nel triage. |
@@ -165,6 +169,25 @@ Fasi 1 e 2 della roadmap "agente necessario". Il modo per misurarlo è `python -
 - token, latenza, letture ed errori.
 
 Demo: 5/5 e contatto corretto per entrambe le strategie a ogni dimensione. È atteso e **non dice nulla**: in demo entrambe sono simulate sulle fixture. Il confronto reale non è ancora stato eseguito. Non dichiarare un vincitore prima di averlo eseguito con un modello fissato e registrato qui i fallimenti osservati.
+
+**Prima esecuzione live, 15/10/2026** (`z-ai/glm-5.3`, una sola esecuzione, `reports/live-scaling-glm-5.3-run1.json`):
+
+| Note per caso | Strategia | Decisioni | Contatto Orion | Token | Media | Errori |
+|---|---|---|---|---|---|---|
+| 3 + 10 | pipeline | 4/5 | sbagliato (CTO) | 15.927 | 10,3 s | 1 |
+| 3 + 10 | search | 4/5 | sbagliato (CTO) | 51.877 | 10,4 s | 1 |
+| 3 + 50 | pipeline | 5/5 | **giusto (CFO)** | 26.091 | 6,5 s | 0 |
+| 3 + 50 | search | 4/5 | nessuno | 54.255 | 10,6 s | 1 |
+| 3 + 200 | pipeline | 5/5 | sbagliato (CTO) | 79.570 | 6,2 s | 0 |
+| 3 + 200 | search | 5/5 | sbagliato (Procurement) | 37.987 | 7,3 s | 0 |
+
+Fallimenti osservati:
+- S1: `search` su Northstar (OPP-002) a 10 e 50 note: sei ricerche per parole chiave ("demo", "security", "deadline", "request", "contact", "planning") e nessuna decisione entro gli 8 round. Chiuso senza proposta. L'agente non trova il periodo di attesa perché non cerca "until" o "contact": la ricerca per parole chiave dipende dalle parole scelte.
+- S2: `pipeline` su BluePeak (OPP-003) a 10 note: nessuna tool call valida. Chiuso senza proposta.
+- S3: contatto giusto 1 volta su 6. Il modello indica quasi sempre il CTO, che compare nelle note originali, e non collega la nota del CFO al conflitto. È proprio il caso in cui l'indagine condizionale doveva pagare, e non paga.
+- Helios: copertura delle evidenze 0 per entrambe. Il modello cita la richiesta legittima e non la nota con l'iniezione (NOTE-005-2) che l'etichetta richiede; la decisione è giusta. Da rivedere l'etichetta, non il modello.
+
+Conclusione provvisoria: nessun vincitore sull'accuratezza. A 200 note `search` usa circa metà dei token della pipeline con le stesse decisioni; a 10–50 note costa di più e fallisce di più. Una sola esecuzione: va ripetuta prima di generalizzare. Nessuna Task creata in nessun caso.
 
 Ipotesi da verificare, senza conclusioni anticipate:
 - la pipeline potrebbe reggere anche a 200 note, perché i modelli recenti hanno contesti ampi; in quel caso l'agente costa di più senza guadagnare accuratezza e si tiene la pipeline;
