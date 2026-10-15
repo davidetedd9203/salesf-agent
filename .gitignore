@@ -10,3 +10,4 @@ reports/live*.json
 
 # Panel material: local only (recruiter brief, branded deck)
 presentation/
+tmp/

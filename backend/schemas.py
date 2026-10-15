@@ -72,7 +72,15 @@ class ListQuery(StrictModel):
     sort: Literal['priority', 'amount', 'close_date']
     stage: Literal['Discovery', 'Qualification', 'Proposal', 'Negotiation'] | None = None
     only_candidates: bool = False
+    account: str | None = Field(default=None, min_length=2, max_length=80, description='Case-insensitive part of the account name, e.g. "helios".')
     limit: int = Field(default=5, ge=1, le=10)
+
+
+class ChatTask(StrictModel):
+    """A task the rep asked for in their own words. Only a proposal: the rep's click creates it."""
+    opportunity_id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=3, max_length=120, pattern=r'^[^\r\n]+$', description="The user's task in Italian, in their words.")
+    due_date: date
 
 
 class ChatReply(StrictModel):

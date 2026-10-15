@@ -57,7 +57,8 @@ def inline_refs(node, defs):
     if isinstance(node, dict):
         if '$ref' in node:
             return inline_refs(defs[node['$ref'].split('/')[-1]], defs)
-        return {k: inline_refs(v, defs) for k, v in node.items() if k not in ('$defs', 'title')}
+        # Drop Pydantic's string title annotations, never a property that happens to be called title.
+        return {k: inline_refs(v, defs) for k, v in node.items() if k != '$defs' and not (k == 'title' and isinstance(v, str))}
     if isinstance(node, list):
         return [inline_refs(v, defs) for v in node]
     return node
@@ -167,7 +168,7 @@ async def complete(client, settings, messages, offered, trace, started, step):
             json={'model': settings.model, 'messages': messages, 'tools': offered,
                   # parallel_tool_calls omitted: no free tool endpoint supports it (observed 404);
                   # callers enforce a single final tool call themselves.
-                  'tool_choice': 'required', 'temperature': 0, 'max_tokens': 1400,
+                  'tool_choice': 'required', 'temperature': 0, 'max_tokens': 4000,
                   'provider': {'require_parameters': True}})
         response.raise_for_status()
         payload = response.json()

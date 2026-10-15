@@ -18,7 +18,7 @@ from temporalio.worker import Worker
 
 with workflow.unsafe.imports_passed_through():
     from .agent import ProviderError
-    from .briefing import analyze_item, select, summarize
+    from .briefing import analyze_item, select, summarize, workflow_id
     from .config import Settings
     from .store import Store
 
@@ -72,18 +72,14 @@ class MorningBriefing:
             BriefingActivities.save_briefing, args=[day, trigger, items], start_to_close_timeout=timedelta(seconds=30))
 
 
-def workflow_id(settings: Settings, day):
-    return f'briefing-{settings.owner_id}-{day}'
-
-
-async def start_briefing(client: Client, settings: Settings, day, trigger):
+async def start_briefing(client: Client, settings: Settings, day, trigger, reset=''):
     """Idempotent start: a running or completed briefing for the same owner and date is reused, never duplicated."""
     try:
-        return await client.start_workflow(MorningBriefing.run, args=[day, trigger], id=workflow_id(settings, day),
+        return await client.start_workflow(MorningBriefing.run, args=[day, trigger], id=workflow_id(settings, day, reset),
                                            task_queue=settings.temporal_task_queue,
                                            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY)
     except WorkflowAlreadyStartedError:
-        return client.get_workflow_handle(workflow_id(settings, day))
+        return client.get_workflow_handle(workflow_id(settings, day, reset))
 
 
 def briefing_worker(client: Client, settings: Settings):

@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from .agent import AgentError, analyze
-from .briefing import run_briefing
+from .briefing import run_briefing, workflow_id
 from .chat import chat
 from .config import Settings
 from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, ClockRequest, LoginRequest
@@ -35,7 +35,7 @@ def create_app(settings=None):
         if settings.orchestrator == 'temporal':
             # The workflow ID per owner and date replaces the in-process lock as the guard against double runs.
             from .workflows import start_briefing
-            await start_briefing(temporal['client'], settings, store.settings.reference_date, trigger)
+            await start_briefing(temporal['client'], settings, store.settings.reference_date, trigger, store.reset_stamp())
             return
         if analysis_lock.locked():
             return
@@ -139,11 +139,21 @@ def create_app(settings=None):
         spawn(ensure_briefing('clock'))  # The user moved time; the briefing starts on its own.
         return configuration()
 
+    @app.post('/api/reset', dependencies=[Depends(authorized)])
+    async def reset():
+        # The session survives: the presenter stays logged in. Same lock as clock moves, so no analysis writes mid-reset.
+        # ponytail: with Temporal a briefing already running in the worker can still save after the reset; wait for it to end.
+        if analysis_lock.locked():
+            raise HTTPException(429, "Un'analisi è in corso: attendi prima di azzerare la demo")
+        store.reset()
+        spawn(ensure_briefing('reset'))
+        return configuration()
+
     @app.get('/api/briefing', dependencies=[Depends(authorized)])
     def briefing():
         day = store.settings.reference_date
         if found := store.briefing(day):
-            return {'status': 'ready', **found}
+            return {'status': 'ready', 'workflow_id': workflow_id(settings, day, store.reset_stamp()), **found}
         enabled = settings.briefing_auto and (settings.mode == 'demo' or bool(settings.api_key and settings.model))
         return {'status': 'running' if analysis_lock.locked() else 'pending' if enabled else 'disabled', 'briefing_date': day}
 

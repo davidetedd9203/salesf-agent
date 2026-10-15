@@ -140,7 +140,9 @@ Questa è una demo locale, non un servizio pronto per essere esposto in rete. L'
 
 ## Reset della demo
 
-Ferma i processi. Per avvio locale elimina **solo** `var/crm.sqlite3`; al riavvio viene reimportato il dataset. Se hai impostato `DB_PATH`, usa quel file. Con Docker `docker compose down -v` elimina il volume e tutte le Task della demo: eseguilo solo quando vuoi azzerarle. Non modificare i CSV aspettandoti aggiornamenti automatici del database già creato.
+Dal frontend: **Azzera demo** sotto l'orologio, poi conferma. Funziona anche su Render. Cancella Task, proposte, analisi, obiettivi, ricontrolli, briefing e registro, riporta l'orologio alla data della fixture e rigenera il briefing (in modalità live costa una nuova serie di chiamate al modello). La sessione resta attiva. Con Temporal ogni reset usa un nuovo ID di workflow per la stessa data; attendi la fine di un briefing in corso prima di azzerare.
+
+Da terminale: ferma i processi. Per avvio locale elimina **solo** `var/crm.sqlite3`; al riavvio viene reimportato il dataset. Se hai impostato `DB_PATH`, usa quel file. Con Docker `docker compose down -v` elimina il volume e tutte le Task della demo: eseguilo solo quando vuoi azzerarle. Non modificare i CSV aspettandoti aggiornamenti automatici del database già creato.
 
 ## File principali
 

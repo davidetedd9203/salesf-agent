@@ -165,7 +165,8 @@ class Store:
         with self.connect() as db:
             rows = db.execute("SELECT opportunity_id, decision FROM proposals WHERE owner=? AND status != 'rejected' ORDER BY created_at",
                               (self.settings.owner_id,)).fetchall()
-        return {r['opportunity_id']: json.loads(r['decision']) for r in rows}  # Later analyses overwrite earlier ones.
+        # Later analyses overwrite earlier ones; chat-requested tasks are not analyses and never rank a record.
+        return {r['opportunity_id']: d for r in rows if (d := json.loads(r['decision'])).get('source') != 'chat'}
 
     def audit(self, event, data, db=None):
         if db is None:
@@ -192,6 +193,36 @@ class Store:
                            (revisit['id'], self.settings.owner_id, oid, revisit['due_date'], pid, timestamp()))
                 self.audit('revisit_scheduled', revisit, db)
         return {'proposal_id': pid, 'opportunity_id': oid, 'mode': mode, 'result': decision, 'trace': trace}
+
+    def propose_task(self, oid, task, mode, ttl=1800):
+        """A task the rep asked for in chat: a proposal with snapshot and expiry, approved by the same endpoint as analyses."""
+        context = self.context(oid)
+        if has_open_task(context):
+            raise ValueError("Esiste già una Task aperta per questa opportunità: nessuna proposta creata.")
+        pid, now = str(uuid4()), datetime.now(timezone.utc)
+        decision = {'decision': 'recommend', 'source': 'chat', 'task': {'kind': 'custom', **task}}
+        with self.connect() as db:
+            db.execute('INSERT INTO proposals(id,owner,opportunity_id,snapshot,decision,mode,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?)',
+                       (pid, self.settings.owner_id, oid, self.fingerprint(context), json.dumps(decision), mode, now.isoformat(),
+                        (now + timedelta(seconds=ttl)).isoformat()))
+            self.audit('task_proposed', {'proposal_id': pid, 'opportunity_id': oid, 'decision': decision, 'mode': mode}, db)
+        return {'proposal_id': pid, 'opportunity_id': oid, 'mode': mode, 'result': decision}
+
+    def reset(self):
+        """Back to the fixture: everything the demo produced goes, the CRM fixture tables are never written and stay."""
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            for table in ('goals', 'revisits', 'tasks', 'proposals', 'briefings', 'audit'):  # Children before parents.
+                db.execute(f'DELETE FROM {table} WHERE owner=?', (self.settings.owner_id,))
+            self.settings = replace(self.settings, reference_date=self.base_date.isoformat())
+            self.audit('demo_reset', {'reference_date': self.settings.reference_date}, db)
+
+    def reset_stamp(self):
+        """Time of the last reset, '' if never: a new run of the same date needs a new Temporal workflow ID."""
+        with self.connect() as db:
+            row = db.execute("SELECT created_at FROM audit WHERE owner=? AND event='demo_reset' ORDER BY id DESC LIMIT 1",
+                             (self.settings.owner_id,)).fetchone()
+        return ''.join(c for c in row['created_at'] if c.isdigit())[:14] if row else ''
 
     def revisits(self, due_only=False):
         query = "SELECT * FROM revisits WHERE owner=? AND status='pending'" + (' AND due_date<=?' if due_only else '') + ' ORDER BY due_date, created_at'
@@ -245,6 +276,9 @@ class Store:
                        (task['id'], task['owner'], task['opportunity_id'], pid, task['title'], task['due_date'], task['created_at']))
             db.execute("UPDATE proposals SET status='approved' WHERE id=?", (pid,))
             self.audit('task_approved', task, db)
+            if task['kind'] not in GOAL_OBJECTIVES:
+                # ponytail: free-text chat tasks get no goal, the server has no objective to check; add one if reps want follow-through.
+                return task
             # The approval also opens a goal: agent memory to follow the task through, not a CRM record.
             goal = {'id': str(uuid4()), 'opportunity_id': task['opportunity_id'], 'task_id': task['id'], 'kind': task['kind'],
                     'objective': GOAL_OBJECTIVES[task['kind']], 'due_date': task['due_date'], 'created_on': self.settings.reference_date}

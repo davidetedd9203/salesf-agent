@@ -56,6 +56,11 @@ def summarize(store: Store, day, trigger, items, orchestrator='asyncio'):
                                      'orchestrator': orchestrator, 'items': items, 'counts': counts})
 
 
+def workflow_id(settings, day, reset=''):
+    # After a demo reset the same date is a new morning: the reset stamp keeps the ID unique, the date keeps it idempotent.
+    return f'briefing-{settings.owner_id}-{day}' + (f'-r{reset}' if reset else '')
+
+
 async def run_briefing(store: Store, trigger='scheduler'):
     day = store.settings.reference_date
     if existing := store.briefing(day):

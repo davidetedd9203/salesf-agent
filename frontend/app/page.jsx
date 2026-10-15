@@ -25,9 +25,11 @@ const sorts = {priority: 'priorità', amount: 'valore', close_date: 'data di chi
 function step(t) {
   if (t.event === 'simulation') return t.detail;
   if (t.event === 'model_response') return `Round ${t.step} del modello: ${t.tool_calls} tool call${t.duplicates_dropped ? `, ${t.duplicates_dropped} duplicate scartate` : ''} · ${t.elapsed_ms} ms`;
-  if (t.event === 'tool_call' && t.tool === 'list_opportunities') return `Query: ordina per ${sorts[t.arguments.sort] || t.arguments.sort}${t.arguments.stage ? `, fase ${t.arguments.stage}` : ''}${t.arguments.only_candidates ? ', solo candidate' : ''}, max ${t.arguments.limit ?? 5}`;
+  if (t.event === 'tool_call' && t.tool === 'list_opportunities') return `${t.arguments.reason ? `${t.arguments.reason} → ` : ''}Query:ordina per ${sorts[t.arguments.sort] || t.arguments.sort}${t.arguments.stage ? `, fase ${t.arguments.stage}` : ''}${t.arguments.account ? `, account «${t.arguments.account}»` : ''}${t.arguments.only_candidates ? ', solo candidate' : ''}, max ${t.arguments.limit ?? 5}`;
   if (t.event === 'tool_call' && t.tool === 'reply') return `Risposta proposta con ${t.arguments.opportunity_ids?.length ?? 0} opportunità; il server verifica che siano tutte nella query`;
+  if (t.event === 'tool_call' && t.tool === 'create_task') return `Proposta di Task: «${t.arguments.title}» entro ${t.arguments.due_date}; il server verifica opportunità, data e Task già aperte`;
   if (t.event === 'tool_call') return `Tool richiesto: ${t.tool}`;
+  if (t.event === 'task_refused') return `Proposta non creata: ${t.error}`;
   if (t.event === 'call_rejected') return `Chiamata rifiutata dal server: ${t.error}`;
   if (t.event === 'malformed_call') return 'Tool call malformata, rifiutata';
   return t.event;
@@ -37,6 +39,7 @@ export default function Home() {
   const [signedIn, setSignedIn] = useState(false);
   const [checking, setChecking] = useState(true);
   const [password, setPassword] = useState('');
+  const [confirmReset, setConfirmReset] = useState(false);
   const [config, setConfig] = useState(null);
   const [opportunities, setOpportunities] = useState([]);
   const [selected, setSelected] = useState('OPP-001');
@@ -115,7 +118,7 @@ export default function Home() {
       await api(`proposals/${result.proposal_id}/approve`, {approved: true});
       setResolved(old => ({...old, [result.proposal_id]: 'approved'})); setReview(null);
       setNotice('Task creata nel CRM simulato. Nessun messaggio è stato inviato.');
-      await refresh(); setContext(await api(`opportunities/${selected}`));
+      await refresh(); if (selected) setContext(await api(`opportunities/${selected}`));
     } catch (e) {setError(e.message);} finally {setBusy('');}
   }
 
@@ -141,7 +144,7 @@ export default function Home() {
         for (const event of lines.filter(Boolean).map(JSON.parse)) {
           if (event.error) throw new Error(event.error);
           if (event.step) update(m => ({trace: [...m.trace, event.step]}));
-          if (event.reply) {replied = true; update(() => ({content: event.reply.message, ids: event.reply.opportunity_ids, mode: event.reply.mode, streaming: false}));}
+          if (event.reply) {replied = true; update(() => ({content: event.reply.message, ids: event.reply.opportunity_ids, proposal: event.reply.proposal, mode: event.reply.mode, streaming: false}));}
         }
       }
       if (!replied) throw new Error('la risposta si è interrotta.');
@@ -158,6 +161,12 @@ export default function Home() {
       await refresh();
       setNotice(`Orologio demo al ${clockDate}. Il briefing parte da solo: nessuna analisi è stata avviata da te.`);
     } catch (e) {setError(e.message);} finally {setBusy('');}
+  }
+
+  async function resetDemo() {
+    setError(''); setBusy('Azzeramento della demo');
+    try {await api('reset', {}); window.location.reload();}  // Clean slate: chat, results and cached state go with the page.
+    catch (e) {setError(e.message); setBusy(''); setConfirmReset(false);}
   }
 
   async function post(path, message) {
@@ -214,7 +223,10 @@ export default function Home() {
       <header className="page-header"><span className="page-icon" aria-hidden="true">{view === 'Task' ? '✓' : view === 'Registro evidenze' ? '≡' : '★'}</span><div><p className="eyebrow">Workspace personale</p><h1>{view === 'Oggi' ? 'La tua prossima mossa' : view}</h1><p>{view === 'Oggi' ? 'Leggi il segnale. Verifica le evidenze. Scegli l’azione.' : view === 'Task' ? 'Ogni Task qui è stata approvata esplicitamente.' : view === 'Registro evidenze' ? 'Tool call, validazione e approvazioni. Nessun ragionamento nascosto.' : 'Tutte le opportunità assegnate a te.'}</p></div><div className="reference">Data di riferimento demo<br/><strong>{config.reference_date}</strong>
         <form className="clock" onSubmit={moveClock}><label htmlFor="clock" className="visually-hidden">Nuova data dell’orologio demo</label>
           <input id="clock" type="date" min={config.base_date} value={clockDate} onChange={e => setClockDate(e.target.value)} required/>
-          <button className="secondary" disabled={!!busy || briefing?.status === 'running'}>Sposta orologio demo</button></form></div></header>
+          <button className="secondary" disabled={!!busy || briefing?.status === 'running'}>Sposta orologio demo</button></form>
+        {confirmReset ? <div className="approval"><p>Cancella Task, proposte, analisi, obiettivi, briefing e registro, e riporta l’orologio al {config.base_date}. Non si annulla.</p>
+          <button className="primary" disabled={!!busy} onClick={resetDemo}>Conferma azzeramento</button><button className="text-button" disabled={!!busy} onClick={() => setConfirmReset(false)}>Annulla</button></div>
+          : <button className="text-button" disabled={!!busy || briefing?.status === 'running'} onClick={() => setConfirmReset(true)}>Azzera demo</button>}</div></header>
       <div className="disclosure">CRM sintetico · {opportunities.length} opportunità · {shortlist.length} candidate selezionate da regole. Le regole segnalano record da rivedere; non stabiliscono un rischio.</div>
       {!config.ready && <p className="error" role="alert">Configurazione OpenRouter incompleta. Imposta chiave API e modello in .env, poi riavvia il backend.</p>}
       {error && <p className="error" role="alert">{error}</p>}
@@ -227,7 +239,7 @@ export default function Home() {
             ? `Preparato dall’agente alle ${new Date(briefing.created_at).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}, senza una tua richiesta · ${briefing.mode === 'demo' ? 'simulazione scriptata' : 'modello reale'} · nessuna Task creata`
             : 'Avviato dal server una volta per data'}
             {briefing.orchestrator === 'temporal' && <> · {/* ponytail: default Temporal dev-server UI address; make it configurable if the server moves. */}
-              <a href={`http://localhost:8233/namespaces/default/workflows/briefing-AE-001-${briefing.briefing_date}`} target="_blank" rel="noreferrer">workflow Temporal</a></>}</span></div>
+              <a href={`http://localhost:8233/namespaces/default/workflows/${briefing.workflow_id}`} target="_blank" rel="noreferrer">workflow Temporal</a></>}</span></div>
           {briefing.status === 'disabled' && <p className="briefing-body muted">Briefing automatico disattivato (BRIEFING_AUTO=false).</p>}
           {(briefing.status === 'pending' || briefing.status === 'running') && <div className="working briefing-body" role="status"><span className="spinner" aria-hidden="true"/>L’agente sta preparando il briefing di oggi…</div>}
           {briefing.status === 'ready' && <div className="briefing-body">
@@ -281,6 +293,9 @@ export default function Home() {
             {m.streaming && <li className="pending"><span className="spinner" aria-hidden="true"/>{m.trace.length ? 'Il server esegue, poi il modello continua…' : 'Il modello sta scegliendo la query…'}</li>}</ol></details>}
           {m.ids?.length > 0 && <><ol className="chat-cards">{m.ids.map(id => {const o = opportunities.find(x => x.opportunity_id === id); return o && <li key={id}><button className="chat-card" onClick={() => selectOpportunity(id)}><strong>{o.account_name}</strong><span>{money(o.amount_eur)} · chiusura {o.close_date}</span><span>{results[id]?.result ? labels[results[id].result.decision] : o.candidate_reasons[0] || o.stage}</span></button></li>;})}</ol>
             <button className="secondary" disabled={!!busy || !config.ready} onClick={() => investigate(m.ids)}>Analizza {m.ids.length === 1 ? 'questa opportunità' : `queste ${m.ids.length}`}</button></>}
+          {m.proposal && (() => {const o = opportunities.find(x => x.opportunity_id === m.proposal.opportunity_id), t = m.proposal.result.task, s = resolved[m.proposal.proposal_id];
+            return <div className="task-preview"><h4>{t.title}</h4><p>{o?.account_name} · scadenza {t.due_date} · assegnata a te<br/>Richiesta da te in chat, non da un’analisi delle note.</p>
+              {s ? <p className="resolution">{s === 'approved' ? 'Task creata' : 'Proposta archiviata'}</p> : <div className="button-row"><button className="primary" disabled={!!busy} onClick={() => approve(m.proposal)}>Crea Task</button><button className="text-button" disabled={!!busy} onClick={() => reject(m.proposal)}>Archivia</button></div>}</div>;})()}
         </div>)}{busy && !messages.at(-1)?.streaming && <p className="muted" role="status">{busy}…</p>}</div>
         <div className="chips">{suggestions.map(s => <button key={s} className="chip" disabled={!!busy || !config.ready} onClick={() => ask(s)}>{s}</button>)}</div>
         <form className="chat-input" onSubmit={e => {e.preventDefault(); ask(question);}}>
