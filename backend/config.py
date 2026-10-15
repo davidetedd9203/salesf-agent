@@ -14,6 +14,8 @@ class Settings:
     mode: str = os.getenv('AGENT_MODE', 'demo')
     model: str = os.getenv('OPENROUTER_MODEL', '')
     api_key: str = os.getenv('OPENROUTER_API_KEY', '')
+    # Optional OpenRouter provider slug tried first (e.g. "primeintellect"); others remain as fallback. Empty = OpenRouter routes (F12).
+    provider: str = os.getenv('OPENROUTER_PROVIDER', '')
     owner_id: str = 'AE-001'  # Bound to the demo identity; never supplied by the model/client.
     reference_date: str = os.getenv('REFERENCE_DATE', '2026-10-12')
     password: str = os.getenv('DEMO_PASSWORD', 'local-demo')

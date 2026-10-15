@@ -183,6 +183,13 @@ export default function Home() {
     try {await api(path, {}); await refresh(); if (message) setNotice(message);} catch (e) {setError(e.message);}
   }
 
+  async function decideGoal(id, decision) {
+    setError('');
+    try {await api(`goals/${id}/decision`, decision); await refresh();
+      setNotice(decision.action === 'drop' ? 'Obiettivo chiuso: l’agente smette di seguirlo.' : `Obiettivo spostato al ${decision.due_date}: l’agente ricontrollerà da quella data.`);}
+    catch (e) {setError(e.message);}
+  }
+
   async function cancelRevisit(id) {
     setError('');
     try {await api(`revisits/${id}/cancel`, {}); await refresh();} catch (e) {setError(e.message);}
@@ -269,7 +276,12 @@ export default function Home() {
           </div>}
           {goals.some(g => ['open', 'escalated', 'blocked'].includes(g.status)) && <div className="briefing-body revisits"><h3>Obiettivi seguiti dall’agente</h3><ul>{goals.filter(g => ['open', 'escalated', 'blocked'].includes(g.status)).map(g => <li key={g.id}>
             <span>{opportunities.find(o => o.opportunity_id === g.opportunity_id)?.account_name} · {g.objective} · {goalStatus[g.status]}{g.status === 'open' ? `, prossimo controllo ${g.next_check}` : ''}</span>
-            <button className="text-button" onClick={() => post(`goals/${g.id}/cancel`)}>Annulla</button></li>)}</ul></div>}
+            {g.status === 'open' ? <button className="text-button" onClick={() => post(`goals/${g.id}/cancel`)}>Annulla</button>
+              : <form className="goal-decision" onSubmit={e => {e.preventDefault(); decideGoal(g.id, {action: 'reschedule', due_date: e.currentTarget.elements.due.value});}}>
+                <label className="visually-hidden" htmlFor={`due-${g.id}`}>Nuova data per {g.objective}</label>
+                <input id={`due-${g.id}`} name="due" type="date" min={config.reference_date} required/>
+                <button className="secondary">Sposta</button>
+                <button type="button" className="text-button" onClick={() => decideGoal(g.id, {action: 'drop'})}>Non serve più</button></form>}</li>)}</ul></div>}
           {revisits.length > 0 && <div className="briefing-body revisits"><h3>Ricontrolli programmati dall’agente</h3><ul>{revisits.map(r => <li key={r.id}>
             <span>{opportunities.find(o => o.opportunity_id === r.opportunity_id)?.account_name} · {r.due_date}</span>
             <button className="text-button" onClick={() => cancelRevisit(r.id)}>Annulla</button></li>)}</ul></div>}

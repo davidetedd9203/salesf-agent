@@ -11,7 +11,7 @@ from .agent import AgentError, analyze
 from .briefing import run_briefing, workflow_id
 from .chat import chat
 from .config import Settings
-from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, ClockRequest, LoginRequest
+from .schemas import AnalysisRequest, ApprovalRequest, ChatRequest, ClockRequest, GoalDecision, LoginRequest
 from .store import Store
 
 
@@ -168,6 +168,14 @@ def create_app(settings=None):
     @app.get('/api/goals', dependencies=[Depends(authorized)])
     def goals():
         return store.goals()
+
+    @app.post('/api/goals/{gid}/decision', dependencies=[Depends(authorized)])
+    def decide_goal(gid: str, body: GoalDecision):
+        try:
+            store.decide_goal(gid, body)
+            return {'ok': True}
+        except ValueError as error:
+            crm_error(error)
 
     @app.post('/api/goals/{gid}/cancel', dependencies=[Depends(authorized)])
     def cancel_goal(gid: str):

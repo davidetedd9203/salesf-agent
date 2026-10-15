@@ -14,6 +14,9 @@ services:
         sync: false
       - key: OPENROUTER_MODEL
         sync: false
+      # Optional: upstream provider tried first, e.g. primeintellect (DECISION_LOG F12). Empty = OpenRouter routes.
+      - key: OPENROUTER_PROVIDER
+        sync: false
       # Public URL of the frontend service, e.g. https://sales-copilot.onrender.com: POSTs from any other origin are rejected.
       - key: APP_ORIGIN
         sync: false

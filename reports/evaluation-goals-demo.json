@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-10-13T15:15:35.651606+00:00",
+  "timestamp": "2026-10-15T15:59:48.811792+00:00",
   "suite": "goals",
   "mode": "demo",
   "model": null,
-  "checks_passed": 6,
-  "n_checks": 6,
+  "checks_passed": 7,
+  "n_checks": 7,
   "checks": [
     {
       "check": "2026-10-12, un obiettivo per ogni Task approvata (Acme, BluePeak)",
@@ -72,6 +72,30 @@
       }
     },
     {
+      "check": "2026-10-17, il venditore sposta BluePeak al 15/01: obiettivo di nuovo aperto, controllo a quella data",
+      "passed": true,
+      "detail": {
+        "id": "b6a5aeb7-8ca4-4f38-8cef-2ca6f2e696cf",
+        "owner": "AE-001",
+        "opportunity_id": "OPP-003",
+        "task_id": "76b93ced-5dd6-4126-8ca2-160bfe08388d",
+        "kind": "prepare_security_response",
+        "objective": "La risposta al questionario di sicurezza \u00e8 stata inviata",
+        "due_date": "2027-01-15",
+        "created_on": "2026-10-12",
+        "status": "open",
+        "next_check": "2027-01-15",
+        "nudges": 0,
+        "last_check": {
+          "action": "reschedule",
+          "by": "rep",
+          "on": "2026-10-17",
+          "due_date": "2027-01-15"
+        },
+        "updated_at": "2026-10-15T15:59:48.808921+00:00"
+      }
+    },
+    {
       "check": "solo le due Task approvate dal venditore, nessuna creata dal sistema",
       "passed": true,
       "detail": null
@@ -79,10 +103,10 @@
   ],
   "goals": [
     {
-      "id": "f2c81575-432f-41ed-983a-2cc0959d5f84",
+      "id": "24eec533-e810-4769-b239-667a5f8d20da",
       "owner": "AE-001",
       "opportunity_id": "OPP-001",
-      "task_id": "255e3d58-412b-4616-8724-fac3f424615e",
+      "task_id": "b824021f-92f6-439b-8dee-07869db5928c",
       "kind": "schedule_demo",
       "objective": "La demo tecnica richiesta si \u00e8 svolta",
       "due_date": "2026-10-16",
@@ -105,36 +129,27 @@
         "on": "2026-10-17",
         "mode": "demo"
       },
-      "updated_at": "2026-10-13T15:15:35.549071+00:00"
+      "updated_at": "2026-10-15T15:59:48.791192+00:00"
     },
     {
-      "id": "e8f75eda-561e-46ea-b7ee-4931508a38d7",
+      "id": "b6a5aeb7-8ca4-4f38-8cef-2ca6f2e696cf",
       "owner": "AE-001",
       "opportunity_id": "OPP-003",
-      "task_id": "a3e66419-c11a-422b-bfce-058f206ffb35",
+      "task_id": "76b93ced-5dd6-4126-8ca2-160bfe08388d",
       "kind": "prepare_security_response",
       "objective": "La risposta al questionario di sicurezza \u00e8 stata inviata",
-      "due_date": "2026-10-13",
+      "due_date": "2027-01-15",
       "created_on": "2026-10-12",
-      "status": "blocked",
-      "next_check": "2026-10-16",
-      "nudges": 1,
+      "status": "open",
+      "next_check": "2027-01-15",
+      "nudges": 0,
       "last_check": {
-        "outcome": "blocked",
-        "reason": "Il cliente ha cambiato i tempi della richiesta.",
-        "evidence": [
-          {
-            "note_id": "NOTE-003-4",
-            "quote": "2026-10-15: Customer wrote that their security review moved to January; the questionnaire is no longer needed this month."
-          }
-        ],
-        "question": "Aggiorni la Task e la data di chiusura prevista?",
-        "action": "ask_rep",
-        "by": "agent",
+        "action": "reschedule",
+        "by": "rep",
         "on": "2026-10-17",
-        "mode": "demo"
+        "due_date": "2027-01-15"
       },
-      "updated_at": "2026-10-13T15:15:35.568765+00:00"
+      "updated_at": "2026-10-15T15:59:48.808921+00:00"
     }
   ],
   "cases": [
@@ -144,7 +159,7 @@
       "account_name": "Acme Industries",
       "why": "signals",
       "analysis": {
-        "proposal_id": "b434ed65-33d2-4a0e-be33-196801e4b613",
+        "proposal_id": "594933b6-1ddb-441e-8939-d60078d528e6",
         "opportunity_id": "OPP-001",
         "mode": "demo",
         "result": {
@@ -196,6 +211,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-001-1",
+              "NOTE-001-2",
+              "NOTE-001-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -209,7 +232,7 @@
       "account_name": "Northstar Logistics",
       "why": "signals",
       "analysis": {
-        "proposal_id": "2a6e5e52-cc0c-4fb7-8b24-779b5dca6841",
+        "proposal_id": "41eccf22-15ef-44bd-bbca-8842c8436583",
         "opportunity_id": "OPP-002",
         "mode": "demo",
         "result": {
@@ -253,6 +276,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-002-1",
+              "NOTE-002-2",
+              "NOTE-002-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -266,7 +297,7 @@
       "account_name": "BluePeak Energy",
       "why": "signals",
       "analysis": {
-        "proposal_id": "9281d093-d3d3-4151-aec8-3368242a20ee",
+        "proposal_id": "10493b10-14d6-419f-bc4b-7796f165d9b9",
         "opportunity_id": "OPP-003",
         "mode": "demo",
         "result": {
@@ -322,6 +353,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-003-1",
+              "NOTE-003-2",
+              "NOTE-003-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -335,7 +374,7 @@
       "account_name": "Orion Manufacturing",
       "why": "signals",
       "analysis": {
-        "proposal_id": "8106db41-14f2-45b4-a151-7a6ab798f8cb",
+        "proposal_id": "bdc82b07-abae-4dc0-be14-d419b1166b55",
         "opportunity_id": "OPP-004",
         "mode": "demo",
         "result": {
@@ -354,7 +393,12 @@
           ],
           "task": null,
           "question": "La demo \u00e8 ancora desiderata e chi pu\u00f2 confermare la decisione?",
-          "revisit_on": null
+          "revisit_on": null,
+          "followup": {
+            "kind": "clarify",
+            "due_date": "2026-10-14",
+            "title": "Chiarire con lo stakeholder la decisione aperta"
+          }
         },
         "trace": [
           {
@@ -383,6 +427,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-004-1",
+              "NOTE-004-2",
+              "NOTE-004-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -396,7 +448,7 @@
       "account_name": "Helios Retail",
       "why": "signals",
       "analysis": {
-        "proposal_id": "bdcf3da9-2d9d-41f1-86a8-5ebd30e54fe5",
+        "proposal_id": "74376027-aab1-4ddf-8676-efaf7ddd3cc1",
         "opportunity_id": "OPP-005",
         "mode": "demo",
         "result": {
@@ -448,6 +500,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-005-1",
+              "NOTE-005-2",
+              "NOTE-005-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -462,10 +522,10 @@
       "why": "goal",
       "goal_check": {
         "goal": {
-          "id": "e8f75eda-561e-46ea-b7ee-4931508a38d7",
+          "id": "b6a5aeb7-8ca4-4f38-8cef-2ca6f2e696cf",
           "owner": "AE-001",
           "opportunity_id": "OPP-003",
-          "task_id": "a3e66419-c11a-422b-bfce-058f206ffb35",
+          "task_id": "76b93ced-5dd6-4126-8ca2-160bfe08388d",
           "kind": "prepare_security_response",
           "objective": "La risposta al questionario di sicurezza \u00e8 stata inviata",
           "due_date": "2026-10-13",
@@ -483,7 +543,7 @@
             "on": "2026-10-14",
             "mode": "demo"
           },
-          "updated_at": "2026-10-13T15:15:35.336769+00:00"
+          "updated_at": "2026-10-15T15:59:48.757476+00:00"
         },
         "trace": [
           {
@@ -512,7 +572,7 @@
       "account_name": "Orion Manufacturing",
       "why": "signals",
       "analysis": {
-        "proposal_id": "704fcce8-a253-476b-a0cb-51f6ac70d331",
+        "proposal_id": "d1a98248-1e78-4ddf-b8b6-759c1446cf13",
         "opportunity_id": "OPP-004",
         "mode": "demo",
         "result": {
@@ -531,7 +591,12 @@
           ],
           "task": null,
           "question": "La demo \u00e8 ancora desiderata e chi pu\u00f2 confermare la decisione?",
-          "revisit_on": null
+          "revisit_on": null,
+          "followup": {
+            "kind": "clarify",
+            "due_date": "2026-10-16",
+            "title": "Chiarire con lo stakeholder la decisione aperta"
+          }
         },
         "trace": [
           {
@@ -560,6 +625,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-004-1",
+              "NOTE-004-2",
+              "NOTE-004-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -573,7 +646,7 @@
       "account_name": "Helios Retail",
       "why": "signals",
       "analysis": {
-        "proposal_id": "2a2da04e-ba92-43d5-b53e-782377cf7a35",
+        "proposal_id": "22f30f02-7128-48ea-9521-fc1734c1d8c0",
         "opportunity_id": "OPP-005",
         "mode": "demo",
         "result": {
@@ -625,6 +698,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-005-1",
+              "NOTE-005-2",
+              "NOTE-005-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -638,7 +719,7 @@
       "account_name": "Atlas Healthcare",
       "why": "signals",
       "analysis": {
-        "proposal_id": "3f8f754a-5c08-4fb7-aeed-970ecf464e29",
+        "proposal_id": "d4c2fd9a-20d9-494a-9027-9dcb2ed9351c",
         "opportunity_id": "OPP-007",
         "mode": "demo",
         "result": {
@@ -682,6 +763,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-007-1",
+              "NOTE-007-2",
+              "NOTE-007-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -695,7 +784,7 @@
       "account_name": "Nimbus Software",
       "why": "signals",
       "analysis": {
-        "proposal_id": "0fc2a362-5194-4dff-95e1-690f329f661c",
+        "proposal_id": "0bb4ff6a-d424-4aa1-a686-cc30bfe03e9e",
         "opportunity_id": "OPP-008",
         "mode": "demo",
         "result": {
@@ -739,6 +828,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-008-1",
+              "NOTE-008-2",
+              "NOTE-008-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -753,10 +850,10 @@
       "why": "goal",
       "goal_check": {
         "goal": {
-          "id": "f2c81575-432f-41ed-983a-2cc0959d5f84",
+          "id": "24eec533-e810-4769-b239-667a5f8d20da",
           "owner": "AE-001",
           "opportunity_id": "OPP-001",
-          "task_id": "255e3d58-412b-4616-8724-fac3f424615e",
+          "task_id": "b824021f-92f6-439b-8dee-07869db5928c",
           "kind": "schedule_demo",
           "objective": "La demo tecnica richiesta si \u00e8 svolta",
           "due_date": "2026-10-16",
@@ -779,7 +876,7 @@
             "on": "2026-10-17",
             "mode": "demo"
           },
-          "updated_at": "2026-10-13T15:15:35.321954+00:00"
+          "updated_at": "2026-10-15T15:59:48.754985+00:00"
         },
         "trace": [
           {
@@ -809,10 +906,10 @@
       "why": "goal",
       "goal_check": {
         "goal": {
-          "id": "e8f75eda-561e-46ea-b7ee-4931508a38d7",
+          "id": "b6a5aeb7-8ca4-4f38-8cef-2ca6f2e696cf",
           "owner": "AE-001",
           "opportunity_id": "OPP-003",
-          "task_id": "a3e66419-c11a-422b-bfce-058f206ffb35",
+          "task_id": "76b93ced-5dd6-4126-8ca2-160bfe08388d",
           "kind": "prepare_security_response",
           "objective": "La risposta al questionario di sicurezza \u00e8 stata inviata",
           "due_date": "2026-10-13",
@@ -835,7 +932,7 @@
             "on": "2026-10-17",
             "mode": "demo"
           },
-          "updated_at": "2026-10-13T15:15:35.399348+00:00"
+          "updated_at": "2026-10-15T15:59:48.767417+00:00"
         },
         "trace": [
           {
@@ -864,7 +961,7 @@
       "account_name": "Orion Manufacturing",
       "why": "signals",
       "analysis": {
-        "proposal_id": "3dc30064-3cfc-4852-a8b2-985794387cdc",
+        "proposal_id": "9d15e07d-5c84-4852-926f-98ab048175c8",
         "opportunity_id": "OPP-004",
         "mode": "demo",
         "result": {
@@ -883,7 +980,12 @@
           ],
           "task": null,
           "question": "La demo \u00e8 ancora desiderata e chi pu\u00f2 confermare la decisione?",
-          "revisit_on": null
+          "revisit_on": null,
+          "followup": {
+            "kind": "clarify",
+            "due_date": "2026-10-19",
+            "title": "Chiarire con lo stakeholder la decisione aperta"
+          }
         },
         "trace": [
           {
@@ -912,6 +1014,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-004-1",
+              "NOTE-004-2",
+              "NOTE-004-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -925,7 +1035,7 @@
       "account_name": "Helios Retail",
       "why": "signals",
       "analysis": {
-        "proposal_id": "81cf57d8-636b-485f-9415-e53f22820e67",
+        "proposal_id": "d1fe8abd-171d-46c7-b0b6-e6cc37e2c0e2",
         "opportunity_id": "OPP-005",
         "mode": "demo",
         "result": {
@@ -977,6 +1087,14 @@
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
           },
           {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-005-1",
+              "NOTE-005-2",
+              "NOTE-005-3"
+            ]
+          },
+          {
             "event": "validation_passed",
             "elapsed_ms": 0
           }
@@ -990,7 +1108,7 @@
       "account_name": "Atlas Healthcare",
       "why": "signals",
       "analysis": {
-        "proposal_id": "71db68a1-2820-4512-ba89-604e1dcde4b4",
+        "proposal_id": "fd905627-bd51-4924-97ae-239d3a15189d",
         "opportunity_id": "OPP-007",
         "mode": "demo",
         "result": {
@@ -1032,6 +1150,14 @@
           {
             "event": "simulation",
             "detail": "Simulazione scriptata sulle fixture; nessun modello chiamato."
+          },
+          {
+            "event": "notes_read",
+            "note_ids": [
+              "NOTE-007-1",
+              "NOTE-007-2",
+              "NOTE-007-3"
+            ]
           },
           {
             "event": "validation_passed",

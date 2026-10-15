@@ -11,7 +11,7 @@ from pathlib import Path
 from .agent import analyze
 from .briefing import run_briefing
 from .chat import chat, list_opportunities
-from .schemas import ListQuery
+from .schemas import GoalDecision, ListQuery
 from .config import ROOT, Settings
 from .store import Store
 
@@ -159,6 +159,17 @@ async def evaluate_goals(mode):
               and 'NOTE-001-4' in {e['note_id'] for e in done['evidence']}, done)
         check('2026-10-17, BluePeak bloccato con domanda al venditore (NOTE-003-4)', blocked and blocked['outcome'] == 'blocked'
               and blocked['question'] and 'NOTE-003-4' in {e['note_id'] for e in blocked['evidence']}, blocked)
+        # The runner answers BluePeak's question as the rep would: the review moved to January.
+        gid = next((g['id'] for g in store.goals() if g['opportunity_id'] == 'OPP-003'), None)
+        try:
+            if not gid:
+                raise ValueError('Nessun obiettivo per BluePeak: la Task non era stata proposta il 12/10')
+            store.decide_goal(gid, GoalDecision(action='reschedule', due_date=date(2027, 1, 15)))
+            resumed = next(g for g in store.goals() if g['id'] == gid)
+        except ValueError as error:
+            resumed = {'error': str(error)}
+        check('2026-10-17, il venditore sposta BluePeak al 15/01: obiettivo di nuovo aperto, controllo a quella data',
+              (resumed.get('status'), resumed.get('next_check')) == ('open', '2027-01-15'), resumed)
         check('solo le due Task approvate dal venditore, nessuna creata dal sistema', len(store.records('tasks')) == 2)
         cases = [{'briefing_date': day, **i, 'error': i.get('error')} for day, b in days.items() for i in b['items']]
         return {'timestamp': datetime.now(timezone.utc).isoformat(), 'suite': 'goals', 'mode': mode,

@@ -169,7 +169,8 @@ async def complete(client, settings, messages, offered, trace, started, step):
                   # parallel_tool_calls omitted: no free tool endpoint supports it (observed 404);
                   # callers enforce a single final tool call themselves.
                   'tool_choice': 'required', 'temperature': 0, 'max_tokens': 4000,
-                  'provider': {'require_parameters': True}})
+                  'provider': {'require_parameters': True,
+                               **({'order': [settings.provider]} if settings.provider else {})}})  # Fallbacks stay on: a down host must not stop the demo.
         response.raise_for_status()
         payload = response.json()
         message = payload['choices'][0]['message']
@@ -185,6 +186,7 @@ async def complete(client, settings, messages, offered, trace, started, step):
         # Observed: models repeat an identical call in one turn. Keep one; different decisions still fail.
         calls = list({canonical(c): c for c in reversed(calls)}.values())[::-1]
     trace.append({'event': 'model_response', 'step': step + 1, 'usage': payload.get('usage', {}),
+                  'provider': payload.get('provider'),  # Who actually served the call: same model, different hosts (F12).
                   'finish_reason': payload['choices'][0].get('finish_reason'), 'tool_calls': received,
                   'duplicates_dropped': received - len(calls or []),
                   'elapsed_ms': round((time.monotonic() - started) * 1000)})
